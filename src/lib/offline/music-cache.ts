@@ -7,10 +7,19 @@ export const ERR_PROBE = "File không phát được";
 export const ERR_START = "Giây bắt đầu vượt quá độ dài bài";
 export const ERR_END = "Giây kết thúc vượt quá độ dài bài";
 export const ERR_MISSING = "Bài không còn trong kho";
+export const ERR_SESSION = "Phiên đăng nhập đã hết hạn, hãy đăng nhập lại";
 const ERR_STORE = "Không lưu được bài vào bộ nhớ trình duyệt";
 
 const CONCURRENCY = 3;
 const RETRIES = 2;
+const BACKOFF_MS = [500, 1500];
+const END_TOLERANCE_SEC = 1;
+
+class DownloadError extends Error {
+  constructor(public reason: string, public retry: boolean) {
+    super(reason);
+  }
+}
 
 export type LoadItem = {
   songId: string;
@@ -39,9 +48,12 @@ export function validateCueTimes(snap: ShowSnapshot, durations: Record<string, n
       errors.push({ cueId: cue.id, reason: ERR_MISSING });
       continue;
     }
-    const duration = durations[song.id] ?? song.durationSec;
-    if (cue.startSec >= duration) errors.push({ cueId: cue.id, reason: ERR_START });
-    else if (cue.endSec != null && cue.endSec > duration) errors.push({ cueId: cue.id, reason: ERR_END });
+    const probed = durations[song.id];
+    const d = Number.isFinite(probed) && probed > 0 ? probed : song.durationSec;
+    if (cue.startSec >= Math.min(d, song.durationSec)) errors.push({ cueId: cue.id, reason: ERR_START });
+    else if (cue.endSec != null && cue.endSec > Math.max(d, song.durationSec) + END_TOLERANCE_SEC) {
+      errors.push({ cueId: cue.id, reason: ERR_END });
+    }
   }
   return errors;
 }
@@ -53,6 +65,8 @@ export async function loadShow(
     fetch: typeof fetch;
     probe: (blob: Blob) => Promise<number>;
     onProgress: (items: LoadItem[], bytesDone: number, bytesTotal: number) => void;
+    /** Delay between retries; injectable so tests stay fast. */
+    sleep?: (ms: number) => Promise<void>;
   },
 ): Promise<{ ok: boolean; items: LoadItem[]; cueErrors: CueError[] }> {
   const songs = Object.values(snap.songs);
@@ -64,18 +78,27 @@ export async function loadShow(
 
   const cache = await deps.caches.open(MUSIC_CACHE);
 
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  /** Returns a blob of exactly song.fileSize bytes, or throws DownloadError with the reason to show. */
   async function download(song: Song): Promise<Blob> {
-    let lastErr: unknown;
+    let err = new DownloadError(ERR_NETWORK, true);
     for (let attempt = 0; attempt <= RETRIES; attempt++) {
+      if (attempt > 0) await sleep(BACKOFF_MS[attempt - 1]);
       try {
         const res = await deps.fetch(`/api/songs/${song.id}/file`, { credentials: "same-origin" });
-        if (!res.ok) throw new Error(`http ${res.status}`);
-        return await res.blob();
+        if (res.status === 401) throw new DownloadError(ERR_SESSION, false);
+        if (res.status === 404) throw new DownloadError(ERR_MISSING, false);
+        if (!res.ok) throw new DownloadError(ERR_NETWORK, true);
+        const blob = await res.blob();
+        if (blob.size !== song.fileSize) throw new DownloadError(ERR_NETWORK, true);
+        return blob;
       } catch (e) {
-        lastErr = e;
+        err = e instanceof DownloadError ? e : new DownloadError(ERR_NETWORK, true);
+        if (!err.retry) break;
       }
     }
-    throw lastErr;
+    throw err;
   }
 
   async function work(index: number): Promise<void> {
@@ -93,8 +116,13 @@ export async function loadShow(
     try {
       const hit = await cache.match(cacheKey(song));
       if (hit) {
-        blob = await hit.blob();
-        bytesDone += song.fileSize;
+        const cached = await hit.blob();
+        if (cached.size === song.fileSize) {
+          blob = cached;
+          bytesDone += song.fileSize;
+        } else {
+          await cache.delete(cacheKey(song)); // truncated or corrupt entry: repair it
+        }
       }
     } catch {
       blob = null;
@@ -102,8 +130,8 @@ export async function loadShow(
     if (!blob) {
       try {
         blob = await download(song);
-      } catch {
-        return fail(ERR_NETWORK);
+      } catch (e) {
+        return fail(e instanceof DownloadError ? e.reason : ERR_NETWORK);
       }
       try {
         await cache.put(
@@ -163,7 +191,16 @@ export function probeAudio(blob: Blob): Promise<number> {
       fn();
     };
     audio.preload = "metadata";
-    audio.addEventListener("loadedmetadata", () => done(() => resolve(audio.duration)), { once: true });
+    audio.addEventListener(
+      "loadedmetadata",
+      () =>
+        done(() => {
+          const d = audio.duration;
+          if (Number.isFinite(d) && d > 0) resolve(d);
+          else reject(new Error("bad duration"));
+        }),
+      { once: true },
+    );
     audio.addEventListener("error", () => done(() => reject(new Error("audio error"))), { once: true });
     audio.src = url;
   });

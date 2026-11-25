@@ -26,7 +26,7 @@ function fakeCaches(): CacheStorage {
 
 const song = (id: string, over: Partial<Song> = {}): Song => ({
   id, folderId: null, title: id, artist: null, durationSec: 30, fileName: `${id}.mp3`,
-  fileSize: 100, mimeType: "audio/mpeg", contentHash: `h-${id}`, ...over,
+  fileSize: 3, mimeType: "audio/mpeg", contentHash: `h-${id}`, ...over,
 });
 const cue = (id: string, songId: string | null, over: Partial<Cue> = {}): Cue => ({
   id, position: 0, kind: songId ? "song" : "background", name: `Cue ${id}`, songId, startSec: 0, endSec: null,
@@ -38,7 +38,7 @@ const snapOf = (songs: Song[], cues: Cue[]): ShowSnapshot => ({
 });
 const okFetch = () => vi.fn(async () => new Response(new Blob(["abc"]), { status: 200 }));
 const deps = (caches: CacheStorage, fetchFn: unknown, probe: (b: Blob) => Promise<number> = async () => 30) => ({
-  caches, fetch: fetchFn as typeof fetch, probe, onProgress: vi.fn(),
+  caches, fetch: fetchFn as typeof fetch, probe, onProgress: vi.fn(), sleep: vi.fn(async (ms: number) => void ms),
 });
 
 describe("loadShow", () => {
@@ -55,8 +55,8 @@ describe("loadShow", () => {
     expect(f2).toHaveBeenCalledTimes(0);
     expect(r.ok).toBe(true);
     const last = d.onProgress.mock.calls.at(-1)!;
-    expect(last[1]).toBe(100); // cache hit counts its full size
-    expect(last[2]).toBe(100);
+    expect(last[1]).toBe(3); // cache hit counts its full size
+    expect(last[2]).toBe(3);
   });
 
   it("changed hash re-downloads", async () => {
@@ -72,6 +72,46 @@ describe("loadShow", () => {
     const r = await loadShow(snapOf([s], [cue("c1", "a", { startSec: 40 })]), deps(fakeCaches(), okFetch(), async () => 30));
     expect(r.cueErrors).toEqual([{ cueId: "c1", reason: "Giây bắt đầu vượt quá độ dài bài" }]);
     expect(r.ok).toBe(false);
+  });
+
+  it("passes probed durations to validation (probe 25 < durationSec 30, cue at 27)", async () => {
+    const s = song("a", { durationSec: 30 });
+    const r = await loadShow(snapOf([s], [cue("c1", "a", { startSec: 27 })]), deps(fakeCaches(), okFetch(), async () => 25));
+    expect(r.cueErrors).toEqual([{ cueId: "c1", reason: "Giây bắt đầu vượt quá độ dài bài" }]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("a truncated download is retried, then fails", async () => {
+    const f = vi.fn(async () => new Response(new Blob(["ab"])));
+    const caches = fakeCaches();
+    const d = deps(caches, f);
+    const r = await loadShow(snapOf([song("a")], []), d);
+    expect(f).toHaveBeenCalledTimes(3);
+    expect(r.items[0]).toMatchObject({ status: "error", reason: "Không tải được bài (lỗi mạng)" });
+    expect(await getCachedBlob(song("a"), caches)).toBeNull();
+    expect(d.sleep.mock.calls.map((c) => c[0])).toEqual([500, 1500]);
+  });
+
+  it("a wrong-size cache entry is deleted and re-downloaded", async () => {
+    const caches = fakeCaches();
+    const s = song("a");
+    await (await caches.open(MUSIC_CACHE)).put(cacheKey(s), new Response(new Blob(["x"])));
+    const f = okFetch();
+    const r = await loadShow(snapOf([s], []), deps(caches, f));
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(r.ok).toBe(true);
+    expect((await getCachedBlob(s, caches))!.size).toBe(3);
+  });
+
+  it("does not retry 401 or 404", async () => {
+    const f401 = vi.fn(async () => new Response("", { status: 401 }));
+    const r1 = await loadShow(snapOf([song("a")], []), deps(fakeCaches(), f401));
+    expect(f401).toHaveBeenCalledTimes(1);
+    expect(r1.items[0].reason).toBe("Phiên đăng nhập đã hết hạn, hãy đăng nhập lại");
+    const f404 = vi.fn(async () => new Response("", { status: 404 }));
+    const r2 = await loadShow(snapOf([song("a")], []), deps(fakeCaches(), f404));
+    expect(f404).toHaveBeenCalledTimes(1);
+    expect(r2.items[0].reason).toBe("Bài không còn trong kho");
   });
 
   it("fetch failing 3 times yields error item and ok=false", async () => {
@@ -128,13 +168,26 @@ describe("loadShow", () => {
 });
 
 describe("validateCueTimes", () => {
-  it("probed duration overrides durationSec", () => {
-    const snap = snapOf([song("a", { durationSec: 30 })], [cue("c1", "a", { startSec: 40 }), cue("c2", "a", { endSec: 50 })]);
-    expect(validateCueTimes(snap, { a: 60 })).toEqual([]);
-    expect(validateCueTimes(snap, { a: 20 })).toEqual([
-      { cueId: "c1", reason: "Giây bắt đầu vượt quá độ dài bài" },
-      { cueId: "c2", reason: "Giây kết thúc vượt quá độ dài bài" },
-    ]);
+  const one = (over: Partial<Cue>, durations?: Record<string, number>) =>
+    validateCueTimes(snapOf([song("a", { durationSec: 30 })], [cue("c1", "a", over)]), durations).map((e) => e.reason);
+  const START = "Giây bắt đầu vượt quá độ dài bài";
+  const END = "Giây kết thúc vượt quá độ dài bài";
+
+  it("endSec tolerance is 1 s", () => {
+    expect(one({ endSec: 30 })).toEqual([]);
+    expect(one({ endSec: 30.9 })).toEqual([]);
+    expect(one({ endSec: 31.5 })).toEqual([END]);
+  });
+
+  it("probed Infinity falls back to durationSec", () => {
+    expect(one({ startSec: 29 }, { a: Infinity })).toEqual([]);
+    expect(one({ startSec: 31 }, { a: Infinity })).toEqual([START]);
+  });
+
+  it("startSec between probed and stored durations fails", () => {
+    expect(one({ startSec: 27 }, { a: 25 })).toEqual([START]);
+    expect(one({ startSec: 27 }, { a: 35 })).toEqual([]);
+    expect(one({ startSec: 32 }, { a: 35 })).toEqual([START]);
   });
 
   it("flags song cues whose song is missing", () => {

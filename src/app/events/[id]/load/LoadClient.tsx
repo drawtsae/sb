@@ -5,10 +5,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
-import { saveSnapshot } from "@/lib/offline/snapshot";
+import { readSnapshot, saveSnapshot } from "@/lib/offline/snapshot";
 import { loadShow, probeAudio, pruneMusicCache, type CueError, type LoadItem } from "@/lib/offline/music-cache";
 import type { ShowSnapshot } from "@/lib/types";
 
+const pad = (n: number) => String(n).padStart(2, "0");
+const stamp = (iso: string) => {
+  const d = new Date(iso);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+};
 const mb = (n: number) => (n / (1024 * 1024)).toFixed(1);
 
 export function LoadClient({ eventId }: { eventId: string }) {
@@ -22,6 +27,7 @@ export function LoadClient({ eventId }: { eventId: string }) {
   const [ok, setOk] = useState(false);
   const [saved, setSaved] = useState(false);
   const [swControlled, setSwControlled] = useState(false);
+  const [stale, setStale] = useState<ShowSnapshot | null>(null);
   const [offlineHelp, setOfflineHelp] = useState(false);
   const [run, setRun] = useState(0);
   const persisted = useRef(false);
@@ -37,12 +43,22 @@ export function LoadClient({ eventId }: { eventId: string }) {
   }, []);
 
   useEffect(() => {
+    const sw = navigator.serviceWorker;
+    if (!sw) return;
+    const update = () => setSwControlled(Boolean(sw.controller));
+    update();
+    sw.addEventListener("controllerchange", update);
+    return () => sw.removeEventListener("controllerchange", update);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       setRunning(true);
       setOk(false);
       setSaved(false);
       setFatal(null);
+      setStale(null);
       setCueErrors([]);
       try {
         const res = await fetch(`/api/events/${eventId}/snapshot`, { credentials: "same-origin", cache: "no-store" });
@@ -67,11 +83,14 @@ export function LoadClient({ eventId }: { eventId: string }) {
           saveSnapshot(s);
           setSaved(true);
           await pruneMusicCache(Object.values(s.songs), caches).catch(() => 0);
-          setSwControlled(Boolean(navigator.serviceWorker?.controller));
         }
         setOk(result.ok);
+        if (!result.ok) setStale(readSnapshot());
       } catch (e) {
-        if (!cancelled) setFatal(e instanceof Error ? e.message : "Có lỗi xảy ra");
+        if (!cancelled) {
+          setFatal(e instanceof Error ? e.message : "Có lỗi xảy ra");
+          setStale(readSnapshot());
+        }
       } finally {
         if (!cancelled) setRunning(false);
       }
@@ -113,6 +132,12 @@ export function LoadClient({ eventId }: { eventId: string }) {
         </p>
       )}
 
+      {stale && !ok && !running ? (
+        <p role="status" data-testid="stale-warning" className="text-sm text-amber-500">
+          Trang Live vẫn đang giữ bản nạp cũ ({stale.eventName} lúc {stamp(stale.takenAt)}). Hãy sửa lỗi rồi nạp lại.
+        </p>
+      ) : null}
+
       {errorItems.length > 0 || cueErrors.length > 0 ? (
         <ul data-testid="load-errors" className="flex flex-col gap-1 text-sm text-destructive">
           {errorItems.map((i) => (
@@ -143,7 +168,7 @@ export function LoadClient({ eventId }: { eventId: string }) {
         <Button type="button" disabled={!ok} onClick={() => router.push("/live")}>
           Bắt đầu tiệc
         </Button>
-        <Button type="button" variant="outline" onClick={() => setOfflineHelp(true)}>
+        <Button type="button" variant="outline" disabled={!ok} onClick={() => setOfflineHelp(true)}>
           Thử chế độ offline
         </Button>
         <Button type="button" variant="ghost" disabled={running} onClick={reload}>

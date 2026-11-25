@@ -38,6 +38,7 @@ test("load page blocks on a bad cue, then enables Bắt đầu tiệc after the 
   await page.goto(`${editorUrl}/load`);
   await expect(page.getByTestId("load-errors").getByText("Giây bắt đầu vượt quá độ dài bài")).toBeVisible();
   await expect(page.getByRole("button", { name: "Bắt đầu tiệc" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Thử chế độ offline" })).toBeDisabled();
   expect(await page.evaluate(() => localStorage.getItem("sb:snapshot"))).toBeNull();
 
   // Fix the cue in the editor.
@@ -48,5 +49,6 @@ test("load page blocks on a bad cue, then enables Bắt đầu tiệc after the 
 
   await page.goto(`${editorUrl}/load`);
   await expect(page.getByRole("button", { name: "Bắt đầu tiệc" })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Thử chế độ offline" })).toBeEnabled();
   expect(await page.evaluate(() => localStorage.getItem("sb:snapshot"))).not.toBeNull();
 });
