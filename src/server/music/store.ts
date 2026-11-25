@@ -91,7 +91,7 @@ async function ingest(input: UploadInput): Promise<Ingested> {
   const ext = extOf(input.originalName);
   const dir = musicDir();
   await fsp.mkdir(dir, { recursive: true });
-  const tmp = path.join(dir, `.tmp-${randomUUID()}`);
+  const tmp = path.join(dir, `.tmp-${randomUUID()}.${ext}`);
   const hash = createHash("sha256");
   let size = 0;
   const counter = new Transform({
@@ -181,14 +181,11 @@ export async function replaceSongFile(db: Db, songId: string, input: UploadInput
     const row = db
       .update(songs)
       .set({
-        title: up.title,
-        artist: up.artist ?? "",
         durationSec: up.durationSec,
         fileName,
         fileSize: up.size,
         mimeType: ALLOWED[up.ext],
         contentHash: up.hash,
-        searchText: searchTextFor(up.title, up.artist),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(songs.id, songId))

@@ -13,8 +13,10 @@ export function proxy(request: NextRequest) {
   return NextResponse.redirect(url);
 }
 
+// The song upload and file routes are excluded on purpose: when the proxy matches, Next
+// buffers the request body and truncates it at 10 MB. They authenticate with requireUserApi.
 export const config = {
   matcher: [
-    "/((?!login$|login/|live$|live/|sw\\.js$|~offline$|~offline/|manifest\\.webmanifest$|_next/|favicon\\.ico$).*)",
+    "/((?!login$|login/|live$|live/|sw\\.js$|~offline$|~offline/|manifest\\.webmanifest$|_next/|favicon\\.ico$|api/songs/upload$|api/songs/[^/]+/file$).*)",
   ],
 };

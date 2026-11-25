@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { writeGarbage, writeToneWav } from "../../scripts/make-fixtures";
 import { createTestDb, type Db } from "@/server/db/client";
@@ -125,6 +126,20 @@ describe("music store", () => {
     expect(fs.readdirSync(musicDir())).toEqual([s.fileName]);
     await expect(replaceSongFile(db, "nope", replaceInput(tone, "a.wav"))).rejects.toThrow();
     expect(fs.readdirSync(musicDir())).toEqual([s.fileName]);
+  });
+
+  it("replaceSongFile keeps a user-edited title, artist and search_text", async () => {
+    const s = await upload(tone, "a.wav");
+    db.update(songs)
+      .set({ title: "Tên Mới", artist: "Ca Sĩ", searchText: "tên mới ca sĩ" })
+      .where(eq(songs.id, s.id))
+      .run();
+    const r = await replaceSongFile(db, s.id, replaceInput(tone2, "zzz.wav"));
+    expect(r.title).toBe("Tên Mới");
+    expect(r.artist).toBe("Ca Sĩ");
+    const row = db.select().from(songs).where(eq(songs.id, s.id)).get()!;
+    expect(row.searchText).toBe("tên mới ca sĩ");
+    expect(r.durationSec).toBeLessThan(s.durationSec);
   });
 
   it("replaceSongFile removes the old file when the extension changes", async () => {

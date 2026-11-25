@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 const RATE = 22050;
 
@@ -34,7 +33,7 @@ export function writeGarbage(file: string, bytes: number): void {
   fs.writeFileSync(file, randomBytes(bytes));
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (typeof require !== "undefined" && typeof module !== "undefined" && require.main === module) {
   const dir = path.join(process.cwd(), "e2e", "fixtures");
   writeToneWav(path.join(dir, "tone-a-20s.wav"), 440, 20);
   writeToneWav(path.join(dir, "tone-b-20s.wav"), 660, 20);
