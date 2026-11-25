@@ -47,4 +47,26 @@ describe("useAutosave", () => {
     expect(save).toHaveBeenLastCalledWith(2);
     expect(result.current.status).toBe("saved");
   });
+
+  it("unmount within the debounce flushes the latest value", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { rerender, unmount } = renderHook(({ v }) => useAutosave(v, save), {
+      initialProps: { v: 1 },
+    });
+    rerender({ v: 2 });
+    rerender({ v: 3 });
+    expect(save).not.toHaveBeenCalled();
+    unmount();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(3);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not flush on unmount when nothing is pending", () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = renderHook(() => useAutosave(1, save));
+    unmount();
+    expect(save).not.toHaveBeenCalled();
+  });
 });

@@ -67,7 +67,7 @@ export async function addBackgroundTrackAction(eventId: string, songId: string) 
 }
 
 export async function removeBackgroundTrackAction(eventId: string, trackId: string) {
-  return run(() => removeBackgroundTrack(getDb(), trackId), editor(eventId));
+  return run(() => removeBackgroundTrack(getDb(), trackId, eventId), editor(eventId));
 }
 
 export async function reorderBackgroundAction(eventId: string, ids: string[]) {
@@ -79,7 +79,7 @@ export async function upsertCueAction(eventId: string, cue: Cue) {
 }
 
 export async function deleteCueAction(eventId: string, cueId: string) {
-  return run(() => deleteCue(getDb(), cueId), editor(eventId));
+  return run(() => deleteCue(getDb(), cueId, eventId), editor(eventId));
 }
 
 export async function reorderCuesAction(eventId: string, ids: string[]) {

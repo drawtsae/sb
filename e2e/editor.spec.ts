@@ -170,3 +170,56 @@ test("deleting an event asks for confirmation", async ({ page }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Xoá" }).click();
   await expect(copy).toHaveCount(0);
 });
+
+test("duplicating a middle cue, editing and reordering persists in order", async ({ page }) => {
+  await page.goto("/events");
+  await page.getByRole("button", { name: "Tạo chương trình" }).click();
+  await page.getByLabel("Tên chương trình").fill("Thứ tự tiết mục");
+  await page.getByRole("dialog").getByRole("button", { name: "Tạo" }).click();
+  await page.waitForURL(/\/events\/[^/]+$/);
+
+  const cues = page.getByTestId("cue-item");
+  for (const n of ["A", "B", "C"]) {
+    await page.getByRole("button", { name: "Thêm tiết mục" }).click();
+    const c = cues.nth(["A", "B", "C"].indexOf(n));
+    await c.getByLabel("Loại").selectOption({ label: "Nhạc nền" });
+    await c.getByLabel("Tên tiết mục").fill(n);
+    await expect(saved(page)).toHaveText("Đã lưu");
+  }
+  await cues.nth(1).getByRole("button", { name: "Nhân bản" }).click();
+  await expect(cues).toHaveCount(4);
+  await expect(cues.nth(2).getByLabel("Tên tiết mục")).toHaveValue("B (bản sao)");
+  await cues.nth(2).getByLabel("Tên tiết mục").fill("B2");
+  await cues.nth(3).getByRole("button", { name: "Chuyển lên" }).click();
+  await expect(cues.nth(2).getByLabel("Tên tiết mục")).toHaveValue("C");
+  await expect(saved(page)).toHaveText("Đã lưu");
+
+  await page.reload();
+  const got = [];
+  for (let i = 0; i < 4; i++) got.push(await cues.nth(i).getByLabel("Tên tiết mục").inputValue());
+  expect(got).toEqual(["A", "B", "C", "B2"]);
+});
+
+test("an edit made right before navigating away is flushed", async ({ page }) => {
+  await page.goto(editorUrl);
+  await page.getByTestId("cue-item").nth(0).getByLabel("Tên tiết mục").fill("Đón khách VIP");
+  // The flush fires a Server Action (a POST) while we navigate; let it finish.
+  const flushed = page.waitForResponse((r) => r.request().method() === "POST");
+  await page.getByRole("link", { name: "← Chương trình" }).click();
+  await flushed;
+  await page.waitForURL(/\/events$/);
+  await page.goto(editorUrl);
+  await expect(page.getByTestId("cue-item").nth(0).getByLabel("Tên tiết mục")).toHaveValue("Đón khách VIP");
+});
+
+test("renaming an event persists", async ({ page }) => {
+  await page.goto("/events");
+  const row = page.getByTestId("event-row").filter({ hasText: "Thứ tự tiết mục" });
+  await row.getByRole("button", { name: "Đổi tên" }).click();
+  await page.getByLabel("Tên chương trình").fill("Tiệc đã đổi tên");
+  await page.getByRole("dialog").getByRole("button", { name: "Lưu" }).click();
+  await expect(page.getByTestId("event-row").filter({ hasText: "Tiệc đã đổi tên" })).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByTestId("event-row").filter({ hasText: "Tiệc đã đổi tên" })).toHaveCount(1);
+  await expect(page.getByTestId("event-row").filter({ hasText: "Thứ tự tiết mục" })).toHaveCount(0);
+});

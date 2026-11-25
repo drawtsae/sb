@@ -184,10 +184,10 @@ export function addBackgroundTrack(db: Db, eventId: string, songId: string): { i
   return { id, songId };
 }
 
-export function removeBackgroundTrack(db: Db, trackId: string): void {
+export function removeBackgroundTrack(db: Db, trackId: string, eventId?: string): void {
   db.transaction((tx) => {
     const t = tx.select().from(backgroundTracks).where(eq(backgroundTracks.id, trackId)).get();
-    if (!t) return;
+    if (!t || (eventId !== undefined && t.eventId !== eventId)) return;
     tx.delete(backgroundTracks).where(eq(backgroundTracks.id, trackId)).run();
     touch(tx, t.eventId);
   });
@@ -252,10 +252,10 @@ export function upsertCue(db: Db, eventId: string, cue: Cue): Cue {
   return rowToCue(db.select().from(cues).where(eq(cues.id, savedId)).get()!);
 }
 
-export function deleteCue(db: Db, cueId: string): void {
+export function deleteCue(db: Db, cueId: string, eventId?: string): void {
   db.transaction((tx) => {
     const c = tx.select().from(cues).where(eq(cues.id, cueId)).get();
-    if (!c) return;
+    if (!c || (eventId !== undefined && c.eventId !== eventId)) return;
     tx.delete(cues).where(eq(cues.id, cueId)).run();
     touch(tx, c.eventId);
   });

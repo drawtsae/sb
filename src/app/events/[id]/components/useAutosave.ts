@@ -48,7 +48,21 @@ export function useAutosave<T>(
     timer.current = setTimeout(() => void run(), delayMs);
   }, [value, delayMs, run]);
 
-  useEffect(() => () => clearTimeout(timer.current), []);
+  // Flush a pending save when leaving (unmount or page hide) so edits are not lost.
+  useEffect(() => {
+    const flush = () => {
+      if (!dirty.current) return;
+      clearTimeout(timer.current);
+      timer.current = undefined;
+      dirty.current = false;
+      void saveRef.current(latest.current).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
 
   const retry = useCallback(() => {
     clearTimeout(timer.current);

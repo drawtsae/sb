@@ -6,11 +6,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
 import type { EventRecord } from "@/lib/types";
-import { createEventAction, deleteEventAction, duplicateEventAction } from "../actions";
+import { createEventAction, deleteEventAction, duplicateEventAction, renameEventAction } from "../actions";
 
 type Dlg =
   | { kind: "create" }
   | { kind: "duplicate"; event: EventRecord }
+  | { kind: "rename"; event: EventRecord }
   | { kind: "delete"; event: EventRecord }
   | null;
 
@@ -42,14 +43,16 @@ export function EventList({ events }: { events: EventRecord[] }) {
     const r =
       dlg.kind === "create"
         ? await createEventAction(name)
-        : await duplicateEventAction(dlg.event.id, name);
+        : dlg.kind === "rename"
+          ? await renameEventAction(dlg.event.id, name)
+          : await duplicateEventAction(dlg.event.id, name);
     setBusy(false);
     if (!r.ok) {
       setError("Có lỗi xảy ra");
       return;
     }
     close();
-    if (dlg.kind === "create") router.push(`/events/${r.data.id}`);
+    if (dlg.kind === "create") router.push(`/events/${(r as { data: { id: string } }).data.id}`);
     else router.refresh();
   }
 
@@ -105,6 +108,16 @@ export function EventList({ events }: { events: EventRecord[] }) {
                 size="xs"
                 variant="outline"
                 onClick={() => {
+                  setName(ev.name);
+                  setDlg({ kind: "rename", event: ev });
+                }}
+              >
+                Đổi tên
+              </Button>
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => {
                   setName(`${ev.name} (bản sao)`);
                   setDlg({ kind: "duplicate", event: ev });
                 }}
@@ -120,7 +133,9 @@ export function EventList({ events }: { events: EventRecord[] }) {
       </ul>
 
       {dlg && dlg.kind !== "delete" ? (
-        <Modal title={dlg.kind === "create" ? "Tạo chương trình" : "Nhân bản chương trình"} onClose={close}>
+        <Modal title={
+            dlg.kind === "create" ? "Tạo chương trình" : dlg.kind === "rename" ? "Đổi tên" : "Nhân bản chương trình"
+          } onClose={close}>
           <form
             className="flex flex-col gap-3"
             onSubmit={(e) => {
@@ -143,7 +158,7 @@ export function EventList({ events }: { events: EventRecord[] }) {
                 Huỷ
               </Button>
               <Button type="submit" disabled={busy}>
-                {dlg.kind === "create" ? "Tạo" : "Nhân bản"}
+                {dlg.kind === "create" ? "Tạo" : dlg.kind === "rename" ? "Lưu" : "Nhân bản"}
               </Button>
             </div>
           </form>

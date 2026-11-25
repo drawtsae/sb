@@ -66,6 +66,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   const serverIds = useRef(new Map<string, string>(detail.cues.map((c) => [c.id, c.id])));
   const chains = useRef(new Map<string, Promise<void>>());
   const counter = useRef(0);
+  const deletedKeys = useRef(new Set<string>());
 
   const setStatus = useCallback((key: string, status: SaveStatus | null, retry?: () => void) => {
     setStatuses((prev) => {
@@ -118,9 +119,12 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
 
   function saveCue(key: string, cue: Cue): Promise<void> {
     const prev = chains.current.get(key) ?? Promise.resolve();
+    // The chain only covers the upsert. Pushing the order must happen after the chain
+    // resolves (it waits on every chain, including this one).
     const p = prev
       .catch(() => undefined)
-      .then(async () => {
+      .then(async (): Promise<boolean> => {
+        if (deletedKeys.current.has(key)) return false;
         const sid = serverIds.current.get(key) ?? "";
         const r = await upsertCueAction(eventId, { ...cue, id: sid });
         if (!r.ok) {
@@ -130,15 +134,16 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
         setError(key, null);
         setStatus(`op:cue:${key}`, null);
         serverIds.current.set(key, r.data.id);
-        if (!sid) {
-          const list = itemsRef.current;
-          if (list.findIndex((i) => i.key === key) < list.length - 1) {
-            await pushCueOrder().catch(() => undefined);
-          }
-        }
+        const list = itemsRef.current;
+        return !sid && list.findIndex((i) => i.key === key) < list.length - 1;
       });
-    chains.current.set(key, p);
-    return p;
+    chains.current.set(
+      key,
+      p.then(() => undefined),
+    );
+    return p.then(async (needsOrder) => {
+      if (needsOrder) await pushCueOrder().catch(() => undefined);
+    });
   }
 
   function insertCue(cue: Cue, at: number) {
@@ -176,6 +181,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   }
 
   function deleteCue(key: string) {
+    deletedKeys.current.add(key);
     setItems((prev) => prev.filter((i) => i.key !== key));
     itemsRef.current = itemsRef.current.filter((i) => i.key !== key);
     setError(key, null);
@@ -226,6 +232,14 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
     : entries.some((s) => s.status === "saving")
       ? "saving"
       : "saved";
+
+  const unsaved = overall !== "saved";
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
 
   function retryAll() {
     for (const s of entries) if (s.status === "error") s.retry?.();

@@ -169,6 +169,21 @@ describe("events repo", () => {
     expect(d.background).toHaveLength(1);
   });
 
+  it("deleteCue and removeBackgroundTrack ignore ids from another event", () => {
+    const db = setup();
+    const { ev, c1, t1 } = populate(db);
+    const other = createEvent(db, "Khác");
+    deleteCue(db, c1.id, other.id);
+    removeBackgroundTrack(db, t1.id, other.id);
+    const d = getEventDetail(db, ev.id)!;
+    expect(d.cues).toHaveLength(2);
+    expect(d.background).toHaveLength(2);
+    deleteCue(db, c1.id, ev.id);
+    removeBackgroundTrack(db, t1.id, ev.id);
+    expect(getEventDetail(db, ev.id)!.cues).toHaveLength(1);
+    expect(getEventDetail(db, ev.id)!.background).toHaveLength(1);
+  });
+
   it("every mutation bumps events.updated_at", async () => {
     const db = setup();
     const ev = createEvent(db, "E");
