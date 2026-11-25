@@ -323,6 +323,79 @@ describe("ruling 3: stale events from a previous source are dropped", () => {
   });
 });
 
+describe("fix 1: a source that fails is reported as ended", () => {
+  it("error during loading with a queued play emits BG_ENDED once and clears the queue", () => {
+    const s = setup();
+    s.driver.run([load("bg1", "b2", 0), play("bg1"), ramp("bg1", 0.7, 3)]);
+    s.els.bg1.fail();
+    expect(s.events).toEqual([{ type: "BG_ENDED", deck: "bg1" }]);
+    s.els.bg1.fail(); // repeated error, same generation
+    s.els.bg1.metadata(100); // even if metadata turned up late, the queued play is gone
+    s.els.bg1.fire("ended");
+    expect(s.events).toEqual([{ type: "BG_ENDED", deck: "bg1" }]);
+    expect(s.els.bg1.play).not.toHaveBeenCalled();
+    expect(s.gain("bg1").ramps()).toEqual([]);
+  });
+
+  it("error during loading on a cue deck emits CUE_ENDED", () => {
+    const s = setup();
+    s.driver.run([load("cue1", "c1", 45), play("cue1"), ramp("cue1", 1, 2)]);
+    s.els.cue1.fail();
+    expect(s.events).toEqual([{ type: "CUE_ENDED", deck: "cue1" }]);
+    expect(s.els.cue1.play).not.toHaveBeenCalled();
+  });
+
+  it("error while ready emits *_ENDED, and later events from the broken source are dropped", () => {
+    const s = setup();
+    playing(s, "cue0", "c1", 1);
+    s.els.cue0.fail(3); // MEDIA_ERR_DECODE mid-track
+    s.els.cue0.fire("timeupdate");
+    s.els.cue0.fire("ended");
+    expect(s.events).toEqual([{ type: "CUE_ENDED", deck: "cue0" }]);
+  });
+
+  it("errors from a previous generation are ignored", () => {
+    const s = setup();
+    // Old source failing while it is being micro-faded out for a new load.
+    playing(s, "bg0", "b1", 0.7);
+    s.driver.run([load("bg0", "b2", 0), play("bg0")]);
+    s.els.bg0.fail();
+    expect(s.events).toEqual([]);
+    vi.advanceTimersByTime(200);
+    // Late error event from the replaced src (the new src cleared `el.error`).
+    s.els.bg0.fire("error");
+    expect(s.events).toEqual([]);
+    s.els.bg0.metadata(180);
+    expect(s.els.bg0.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("each new generation can report its own failure once", () => {
+    const s = setup();
+    s.driver.run([load("bg0", "b1", 0), play("bg0")]);
+    s.els.bg0.fail();
+    s.driver.run([load("bg0", "b2", 0), play("bg0")]);
+    s.els.bg0.fail();
+    expect(s.events).toEqual([
+      { type: "BG_ENDED", deck: "bg0" },
+      { type: "BG_ENDED", deck: "bg0" },
+    ]);
+  });
+});
+
+describe("fix 2: audible check also uses the last ramp target", () => {
+  it("micro-fades a playing deck whose engine reports a stale gain of 0 while fading in", () => {
+    const s = setup();
+    playing(s, "cue0", "c1", 0.8);
+    s.gain("cue0").value = 0; // stale reading; last target sent was 0.8
+    s.ctx.currentTime = 3;
+    s.driver.run([load("cue0", "c2", 0)]);
+    expect(s.gain("cue0").ramps()).toEqual([[0, 3.15]]);
+    expect(s.els.cue0.src).toBe(url("c1"));
+    vi.advanceTimersByTime(200);
+    expect(s.els.cue0.src).toBe(url("c2"));
+  });
+});
+
 describe("ruling 4: deck with no source", () => {
   it("ramp just schedules gain, play is a no-op, pauseAtEnd does not throw", () => {
     const s = setup();

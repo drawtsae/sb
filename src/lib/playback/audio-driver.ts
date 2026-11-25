@@ -43,7 +43,7 @@ type Timer = ReturnType<typeof setTimeout>;
 type DeckCommand = Extract<Command, { type: "play" | "ramp" }>;
 
 /**
- * empty    – never loaded: play is a no-op, ramps only schedule gain.
+ * empty    – never loaded, or the current source failed: play is a no-op, ramps only schedule gain.
  * fading   – a load arrived while audible: micro-fading the old source; play/ramp are queued.
  * loading  – new src set, waiting for `loadedmetadata`; play (and anything after it) is queued.
  * ready    – metadata loaded and seeked: commands run directly, events are forwarded.
@@ -60,6 +60,10 @@ interface DeckState {
   gen: number;
   /** Generation whose source has loaded metadata; equals `gen` exactly when phase is ready. */
   readyGen: number;
+  /** Generation for which a media error already emitted *_ENDED (at most one per generation). */
+  errorGen: number;
+  /** Last gain target sent to this deck; backs up `gain.value` if an engine reports it stale. */
+  target: number;
   /** Song in the element's current src. */
   songId: string | null;
   /** Load waiting for the micro-fade to finish. */
@@ -97,7 +101,7 @@ export function createAudioDriver(
     source.connect(gain);
     gain.connect(master);
     const d: DeckState = {
-      deck, el, source, gain, phase: "empty", gen: 0, readyGen: -1, songId: null,
+      deck, el, source, gain, phase: "empty", gen: 0, readyGen: -1, errorGen: -1, target: 0, songId: null,
       pendingLoad: null, seekTo: 0, queue: [], pauseTimer: null, swapTimer: null, listeners: [],
     };
     const on = (type: string, fn: () => void) => {
@@ -114,6 +118,7 @@ export function createAudioDriver(
       if (d.readyGen !== d.gen) return;
       emit(isCue(deck) ? { type: "CUE_ENDED", deck } : { type: "BG_ENDED", deck });
     });
+    on("error", () => onMediaError(d));
     return d;
   }
 
@@ -137,6 +142,7 @@ export function createAudioDriver(
     const now = ctx.currentTime;
     d.gain.gain.cancelScheduledValues(now);
     d.gain.gain.setValueAtTime(0, now);
+    d.target = 0;
   }
 
   function clearPause(d: DeckState) {
@@ -144,8 +150,9 @@ export function createAudioDriver(
     d.pauseTimer = null;
   }
 
+  /** Not paused, and either the reported gain or the last ramp target is above silence. */
   function isAudible(d: DeckState) {
-    return !d.el.paused && d.gain.gain.value > SILENT_GAIN;
+    return !d.el.paused && (d.gain.gain.value > SILENT_GAIN || d.target > SILENT_GAIN);
   }
 
   // ---------- commands ----------
@@ -153,6 +160,7 @@ export function createAudioDriver(
   function applyRamp(d: DeckState, c: Extract<Command, { type: "ramp" }>) {
     clearPause(d);
     rampParam(d.gain.gain, c.to, c.seconds);
+    d.target = c.to;
     if (c.pauseAtEnd) {
       d.pauseTimer = setTimeout(() => {
         d.pauseTimer = null;
@@ -208,6 +216,7 @@ export function createAudioDriver(
       // Ruling 2: never cut an audible deck.
       d.phase = "fading";
       rampParam(d.gain.gain, 0, MICRO_FADE_SEC);
+      d.target = 0;
       d.swapTimer = setTimeout(() => {
         d.swapTimer = null;
         swap(d);
@@ -241,6 +250,27 @@ export function createAudioDriver(
     const queued = d.queue;
     d.queue = [];
     for (const c of queued) deckCommand(d, c);
+  }
+
+  /**
+   * The current source failed (revoked blob URL, corrupt file, decode/network error). Without
+   * this the deck would wait forever for metadata (or stall mid-track) and the machine would
+   * never hear about it. Treat it as the track ending: `CUE_ENDED` lets the machine finish the
+   * cue, `BG_ENDED` advances the playlist.
+   */
+  function onMediaError(d: DeckState) {
+    // Stale: a micro-fading old source (phase fading), a never-loaded deck, or an event left over
+    // from a replaced src (a new src clears `el.error`).
+    if ((d.phase !== "loading" && d.phase !== "ready") || !d.el.error) return;
+    // At most one *_ENDED per generation. Every retry needs a new `load` (a new generation), so
+    // even a playlist of all-broken files cannot loop faster than the machine issues loads.
+    if (d.errorGen === d.gen) return;
+    d.errorGen = d.gen;
+    d.queue = [];
+    d.pendingLoad = null;
+    d.phase = "empty";
+    d.readyGen = -1; // drop any further timeupdate/ended from the broken source
+    emit(isCue(d.deck) ? { type: "CUE_ENDED", deck: d.deck } : { type: "BG_ENDED", deck: d.deck });
   }
 
   function run(commands: Command[]) {

@@ -66,6 +66,8 @@ export class FakeElement {
   /** Interleaved log of src/seek/play/pause, to check ordering. */
   log: string[] = [];
   duration = NaN;
+  /** MediaError of the current source; a new `src` clears it (as the load algorithm does). */
+  error: { code: number } | null = null;
   paused = true;
   preload = "";
   dataset: Record<string, string> = {};
@@ -81,6 +83,7 @@ export class FakeElement {
     // Media element load algorithm: a new source starts paused with unknown duration.
     this.paused = true;
     this.duration = NaN;
+    this.error = null;
     this._currentTime = 0;
   }
   get currentTime() {
@@ -120,6 +123,11 @@ export class FakeElement {
   }
   fire(type: string) {
     for (const fn of [...(this.listeners.get(type) ?? [])]) fn({ type });
+  }
+  /** The current source failed (MEDIA_ERR_SRC_NOT_SUPPORTED by default). */
+  fail(code = 4) {
+    this.error = { code };
+    this.fire("error");
   }
   /** The browser finished reading metadata for the current src. */
   metadata(duration: number) {
