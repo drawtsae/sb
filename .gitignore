@@ -48,3 +48,7 @@ e2e/.auth/
 .superpowers/
 test-results/
 playwright-report/
+
+# generated audio fixtures
+e2e/fixtures/*.wav
+e2e/fixtures/*.mp3
