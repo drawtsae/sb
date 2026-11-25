@@ -35,6 +35,20 @@ export function recordLoginFailure(key: string, now: number = Date.now()): void 
   store().set(key, list);
 }
 
+/**
+ * Check and, if allowed, synchronously count the attempt as a provisional failure.
+ * Must be called before any await so concurrent requests cannot all pass the check.
+ * Clear with resetLoginRate on success.
+ */
+export function reserveLoginAttempt(
+  key: string,
+  now: number = Date.now(),
+): { allowed: boolean; retryAfterSec: number } {
+  const r = checkLoginRate(key, now);
+  if (r.allowed) recordLoginFailure(key, now);
+  return r;
+}
+
 export function resetLoginRate(key: string): void {
   store().delete(key);
 }

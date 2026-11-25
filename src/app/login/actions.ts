@@ -5,9 +5,8 @@ import { redirect } from "next/navigation";
 import { safeNext } from "@/lib/safe-next";
 import { hashPassword, verifyPassword } from "@/server/auth/password";
 import {
-  checkLoginRate,
   loginRateKey,
-  recordLoginFailure,
+  reserveLoginAttempt,
   resetLoginRate,
 } from "@/server/auth/rate-limit";
 import {
@@ -29,7 +28,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const next = safeNext(formData.get("next"));
 
   const key = loginRateKey(email, await headers());
-  const rate = checkLoginRate(key);
+  // Reserved synchronously (before any await) so parallel guesses are all counted.
+  const rate = reserveLoginAttempt(key);
   if (!rate.allowed) return { error: `Thử lại sau ${rate.retryAfterSec} giây` };
 
   const db = getDb();
@@ -38,13 +38,15 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const hash = user?.passwordHash ?? (await (dummyHash ??= hashPassword("dummy-password")));
   const ok = (await verifyPassword(hash, password)) && !!user;
   if (!ok || !user) {
-    recordLoginFailure(key);
     return { error: "Sai email hoặc mật khẩu" };
   }
 
   resetLoginRate(key);
+  const jar = await cookies();
+  const old = jar.get(SESSION_COOKIE)?.value;
+  if (old) await invalidateSession(db, old);
   const { token } = await createSession(db, user.id);
-  (await cookies()).set(SESSION_COOKIE, token, sessionCookieOptions());
+  jar.set(SESSION_COOKIE, token, sessionCookieOptions());
   redirect(next);
 }
 

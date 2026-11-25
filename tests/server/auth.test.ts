@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword } from "@/server/auth/password";
 import { createSession, invalidateSession, validateSession } from "@/server/auth/session";
 import {
   checkLoginRate,
+  reserveLoginAttempt,
   recordLoginFailure,
   resetLoginRate,
   resetRateLimitForTests,
@@ -91,6 +92,23 @@ describe("rate limit", () => {
     expect(r.allowed).toBe(false);
     expect(r.retryAfterSec).toBeGreaterThan(0);
     expect(checkLoginRate(key, t0 + 15 * 60_000 + 10).allowed).toBe(true);
+  });
+
+  it("concurrent wrong-password attempts are throttled from the 6th", async () => {
+    const key = "a@x.com|local";
+    const h = await hashPassword("right-password");
+    // Mirrors the login action: reserve synchronously, then await slow verification.
+    const attempt = async () => {
+      const r = reserveLoginAttempt(key);
+      if (!r.allowed) return "throttled";
+      await verifyPassword(h, "wrong");
+      return "failed";
+    };
+    const results = await Promise.all(Array.from({ length: 8 }, attempt));
+    expect(results.filter((r) => r === "failed")).toHaveLength(5);
+    expect(results.slice(5)).toEqual(["throttled", "throttled", "throttled"]);
+    resetLoginRate(key);
+    expect(checkLoginRate(key).allowed).toBe(true);
   });
 
   it("success resets the counter", () => {

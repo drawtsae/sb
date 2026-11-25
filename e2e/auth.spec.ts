@@ -22,7 +22,7 @@ test.describe("signed out", () => {
   });
 
   test("/live is public", async ({ request }) => {
-    const res = await request.get("/live");
+    const res = await request.get("/live", { maxRedirects: 0 });
     expect(res.status()).toBe(200);
   });
 
