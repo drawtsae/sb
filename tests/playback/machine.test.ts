@@ -93,15 +93,15 @@ describe("reduce (brief table)", () => {
 
   it("CUE_ENDED before fade point still transitions", () => {
     const { state, commands } = run([START, go(1), cueEnded("cue0")]);
-    expect(commands).toContainEqual(play("bg0"));
-    expect(commands).toContainEqual(ramp("bg0", 0.7, 3));
+    expect(commands).toEqual([ramp("cue0", 0, 3, true), play("bg0"), ramp("bg0", 0.7, 3)]);
+    expect(commands.some((c) => c.type === "load")).toBe(false);
     expect(state.mode).toBe("background");
   });
 
   it("background-kind cue acts as back-to-background and marks current", () => {
     const { state, commands } = run([START, go(1), go(0)]);
-    expect(commands).toContainEqual(play("bg0"));
-    expect(commands).toContainEqual(ramp("bg0", 0.7, 3));
+    expect(commands).toEqual([ramp("cue0", 0, 3, true), play("bg0"), ramp("bg0", 0.7, 3)]);
+    expect(commands.some((c) => c.type === "load")).toBe(false);
     expect(state.currentCueIndex).toBe(0);
     expect(state.mode).toBe("background");
   });
@@ -116,7 +116,9 @@ describe("reduce (brief table)", () => {
 
   it("FADE_STOP ramps audible decks to 0 over stopFadeSec", () => {
     const { state, commands } = run([go(1), STOP]);
-    expect(commands).toEqual([ramp("cue0", 0, 3, true)]);
+    // Brief row is a containment check; the never-loaded partner cue1 also gets a harmless ramp.
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    expect(commands).toEqual([ramp("cue0", 0, 3, true), ramp("cue1", 0, 3, true)]);
     expect(state.mode).toBe("silent");
   });
 
@@ -135,9 +137,9 @@ describe("reduce (brief table)", () => {
 
   it("BG_ENDED before crossfade point still advances", () => {
     const { commands } = run([START, bgEnded("bg0")]);
-    expect(commands).toContainEqual(load("bg1", "b2", 0));
-    expect(commands).toContainEqual(play("bg1"));
-    expect(commands).toContainEqual(ramp("bg1", 0.7, 4));
+    expect(commands).toEqual([
+      load("bg1", "b2", 0), play("bg1"), ramp("bg1", 0.7, 4), ramp("bg0", 0, 4, true),
+    ]);
   });
 
   it("GO_CUE during background crossfade fades both bg decks; resume plays only incoming", () => {
@@ -149,6 +151,8 @@ describe("reduce (brief table)", () => {
     const r2 = run([BACK], r1.state);
     const bgPlays = r2.commands.filter((c) => c.type === "play" && isBg(c));
     expect(bgPlays).toEqual([play("bg1")]);
+    expect(r2.commands).toEqual([ramp("cue0", 0, 3, true), play("bg1"), ramp("bg1", 0.7, 3)]);
+    expect(r2.commands.some((c) => c.type === "load")).toBe(false);
   });
 
   it("restored resumeAtSec is used once", () => {
@@ -296,6 +300,38 @@ describe("reduce (controller rulings and edge cases)", () => {
     expect(state.bg.crossfading).toBe(false);
     expect(state.bg.fadingDeck).toBeNull();
     expect(run([START], state).commands).toEqual([play("bg1"), ramp("bg1", 0.7, 3)]);
+  });
+
+  it("FADE_STOP in cue mode also fades the bg still fading under the cue's fadeIn", () => {
+    const { state, commands } = run([START, go(1), STOP]);
+    expect(commands).toContainEqual(ramp("bg0", 0, 3, true));
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    expect(commands).toEqual([
+      ramp("bg0", 0, 3, true), ramp("bg1", 0, 3, true), ramp("cue0", 0, 3, true), ramp("cue1", 0, 3, true),
+    ]);
+    expect(state.mode).toBe("silent");
+    expect(state.bg.started).toBe(true);
+  });
+
+  it("FADE_STOP with a long cue fadeIn cuts the bg fade short to stopFadeSec", () => {
+    const snap = { ...SNAP, cues: SNAP.cues.map((c) => (c.id === "q1" ? { ...c, fadeInSec: 8 } : c)) };
+    const { commands } = run([START, go(1), STOP], undefined, snap);
+    expect(commands).toContainEqual(ramp("bg0", 0, 3, true));
+    expect(commands.every((c) => c.type !== "ramp" || c.seconds === 3)).toBe(true);
+  });
+
+  it("FADE_STOP after cue A→B fades both cue decks", () => {
+    const { commands } = run([go(1), go(2), STOP]);
+    expect(commands).toContainEqual(ramp("cue1", 0, 3, true));
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    expect(commands).toEqual([ramp("cue1", 0, 3, true), ramp("cue0", 0, 3, true)]);
+  });
+
+  it("FADE_STOP after a resume fades both the bg and the still-ending cue", () => {
+    const { state, commands } = run([START, go(1), cueTime("cue0", 187), STOP]);
+    expect(commands).toContainEqual(ramp("bg0", 0, 3, true));
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    expect(state.mode).toBe("silent");
   });
 
   it("FADE_STOP from idle or silent emits nothing", () => {

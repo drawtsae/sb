@@ -6,6 +6,7 @@ import type { Cue, EventSettings, ShowSnapshot, Song } from "@/lib/types";
 import { buildOrder, nextPosition } from "./background-order";
 
 export type Deck = "bg0" | "bg1" | "cue0" | "cue1";
+/** Driver contract: a new ramp on a deck cancels any pending `pauseAtEnd` and starts from the current gain; `master` is smoothed by the driver. */
 export type Command =
   | { type: "load"; deck: Deck; songId: string; atSec: number } // set src + seek; gain stays 0
   | { type: "play"; deck: Deck }
@@ -216,19 +217,31 @@ function onBgEnded(state: PlaybackState, deck: Deck, snap: ShowSnapshot, rng: Rn
   };
 }
 
+/**
+ * FADE_STOP: everything that may still be audible fades to 0 over `stopFadeSec` and pauses.
+ * Rule: ramp both decks of every deck pair that has been used — the bg pair once `bg.started`,
+ * the cue pair once any song cue started (`cue.cueIndex !== null`) — active deck first. This
+ * catches decks still on their own longer fades (bg fading under a cue's fadeIn, the previous
+ * cue after A→B, a cue still `ending` after a resume). A partner deck that was never loaded is
+ * at gain 0 with no source, so its ramp is a harmless no-op. From idle/silent: nothing.
+ */
 function fadeStop(state: PlaybackState, snap: ShowSnapshot): Result {
+  if (state.mode !== "background" && state.mode !== "cue") return noop(state);
   const secs = snap.settings.stopFadeSec;
-  if (state.mode === "background") {
-    const out = fadeOutBg(state, secs);
-    return { state: { ...out.state, mode: "silent" }, commands: out.commands };
+  const { bg, cue } = state;
+  const commands: Command[] = [];
+  if (bg.started) commands.push(ramp(bg.activeDeck, 0, secs, true), ramp(otherBg(bg.activeDeck), 0, secs, true));
+  if (cue.cueIndex !== null) {
+    commands.push(ramp(cue.activeDeck, 0, secs, true), ramp(otherCue(cue.activeDeck), 0, secs, true));
   }
-  if (state.mode === "cue") {
-    return {
-      state: { ...state, mode: "silent", cue: { ...state.cue, ending: true } },
-      commands: [ramp(state.cue.activeDeck, 0, secs, true)],
-    };
-  }
-  return noop(state);
+  return {
+    state: {
+      ...state, mode: "silent",
+      bg: { ...bg, crossfading: false, fadingDeck: null },
+      cue: { ...cue, ending: cue.cueIndex !== null ? true : cue.ending },
+    },
+    commands,
+  };
 }
 
 function setMaster(state: PlaybackState, to: number): Result {
