@@ -19,6 +19,8 @@ import {
   ValidationError,
   type ValidationIssue,
 } from "@/server/repo/events";
+import { importEvent } from "@/server/repo/event-import";
+import { parseExport } from "@/lib/events/export";
 
 export type ActionResult<T = undefined> =
   | (T extends undefined ? { ok: true } : { ok: true; data: T })
@@ -84,4 +86,15 @@ export async function deleteCueAction(eventId: string, cueId: string) {
 
 export async function reorderCuesAction(eventId: string, ids: string[]) {
   return run(() => reorderCues(getDb(), eventId, ids), editor(eventId));
+}
+
+export type ImportResult =
+  | { ok: true; eventId: string; missing: { title: string; contentHash: string }[] }
+  | { ok: false; error: string };
+
+export async function importEventAction(jsonText: string): Promise<ImportResult> {
+  const r = await run(() => importEvent(getDb(), parseExport(jsonText)));
+  if (!r.ok) return { ok: false, error: r.error === "invalid" ? "File không đúng định dạng" : r.error };
+  const { event, missing } = (r as { ok: true; data: ReturnType<typeof importEvent> }).data;
+  return { ok: true, eventId: event.id, missing };
 }

@@ -1,0 +1,29 @@
+import { requireUserApi } from "@/server/auth/require";
+import { getDb } from "@/server/db/client";
+import { getEventDetail } from "@/server/repo/events";
+import { toExport } from "@/lib/events/export";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
+  const db = getDb();
+  const user = await requireUserApi(req, db);
+  if (user instanceof Response) return user;
+
+  const { id } = await ctx.params;
+  const detail = getEventDetail(db, id);
+  if (!detail) return Response.json({ error: "not_found" }, { status: 404 });
+
+  const fileName = encodeURIComponent(detail.event.name).replace(
+    /['()*]/g,
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),
+  );
+  const body = JSON.stringify(toExport(detail), null, 2);
+  return new Response(body, {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename*=UTF-8''${fileName}.json`,
+    },
+  });
+}

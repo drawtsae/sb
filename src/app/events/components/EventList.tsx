@@ -2,11 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
 import type { EventRecord } from "@/lib/types";
-import { createEventAction, deleteEventAction, duplicateEventAction, renameEventAction } from "../actions";
+import {
+  createEventAction,
+  deleteEventAction,
+  duplicateEventAction,
+  importEventAction,
+  renameEventAction,
+} from "../actions";
 
 type Dlg =
   | { kind: "create" }
@@ -27,6 +33,31 @@ export function EventList({ events }: { events: EventRecord[] }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [missing, setMissing] = useState<{ title: string; contentHash: string }[]>([]);
+  const [importedId, setImportedId] = useState<string | null>(null);
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setImportError(null);
+    setMissing([]);
+    setImportedId(null);
+    setBusy(true);
+    const r = await importEventAction(await file.text());
+    setBusy(false);
+    if (fileRef.current) fileRef.current.value = "";
+    if (!r.ok) {
+      setImportError(r.error);
+      return;
+    }
+    if (r.missing.length === 0) router.push(`/events/${r.eventId}`);
+    else {
+      setMissing(r.missing);
+      setImportedId(r.eventId);
+    }
+  }
 
   const close = () => {
     setDlg(null);
@@ -70,15 +101,43 @@ export function EventList({ events }: { events: EventRecord[] }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Chương trình</h1>
-        <Button
-          onClick={() => {
-            setName("");
-            setDlg({ kind: "create" });
-          }}
-        >
-          Tạo chương trình
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            data-testid="import-input"
+            onChange={(e) => void onFile(e.target.files?.[0])}
+          />
+          <Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
+            Nhập JSON
+          </Button>
+          <Button
+            onClick={() => {
+              setName("");
+              setDlg({ kind: "create" });
+            }}
+          >
+            Tạo chương trình
+          </Button>
+        </div>
       </div>
+
+      {importError ? <p className="text-sm text-destructive">{importError}</p> : null}
+      {importedId ? (
+        <div className="rounded-lg border p-3 text-sm" data-testid="import-missing">
+          <p className="font-medium">Thiếu bài trong kho:</p>
+          <ul className="list-disc pl-5">
+            {missing.map((m) => (
+              <li key={m.contentHash}>{m.title}</li>
+            ))}
+          </ul>
+          <Link href={`/events/${importedId}`} className="mt-2 inline-block underline">
+            Mở chương trình đã nhập
+          </Link>
+        </div>
+      ) : null}
 
       {events.length === 0 ? (
         <p className="text-sm text-muted-foreground">Chưa có chương trình nào</p>
@@ -104,6 +163,13 @@ export function EventList({ events }: { events: EventRecord[] }) {
               >
                 Kiểm tra &amp; nạp
               </Link>
+              <a
+                href={`/api/events/${ev.id}/export`}
+                download
+                className="rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline"
+              >
+                Xuất JSON
+              </a>
               <Button
                 size="xs"
                 variant="outline"
