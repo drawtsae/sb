@@ -1,14 +1,19 @@
 import { AppHeader } from "@/components/app-header";
 import { requireUser } from "@/server/auth/require";
+import { getDb } from "@/server/db/client";
+import { listEvents } from "@/server/repo/events";
+import { EventList } from "./components/EventList";
 
-// Placeholder: Task 10 replaces the body.
+export const dynamic = "force-dynamic";
+
 export default async function EventsPage() {
   const user = await requireUser("/events");
+  const events = listEvents(getDb());
   return (
     <>
       <AppHeader user={user} />
-      <main className="p-6">
-        <h1 className="text-xl font-semibold">Sự kiện</h1>
+      <main className="mx-auto max-w-4xl p-6">
+        <EventList events={events} />
       </main>
     </>
   );

@@ -84,6 +84,17 @@ describe("db schema", () => {
     ).toBe("SQLITE_CONSTRAINT_CHECK");
   });
 
+  it("cue fades are nullable and default to null", () => {
+    const db = createTestDb();
+    seed(db);
+    db.insert(cues).values(cue()).run();
+    const [row] = db.select().from(cues).all();
+    expect(row.fadeInSec).toBeNull();
+    expect(row.fadeOutSec).toBeNull();
+    db.update(cues).set({ fadeInSec: 2, fadeOutSec: null }).where(eq(cues.id, "c1")).run();
+    expect(db.select().from(cues).all()[0]).toMatchObject({ fadeInSec: 2, fadeOutSec: null });
+  });
+
   it("end_sec <= start_sec violates check", () => {
     const db = createTestDb();
     seed(db);

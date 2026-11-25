@@ -103,8 +103,8 @@ export const cues = sqliteTable(
     songId: text().references(() => songs.id, { onDelete: "restrict" }),
     startSec: real().notNull().default(0),
     endSec: real(),
-    fadeInSec: real().notNull().default(0),
-    fadeOutSec: real().notNull().default(0),
+    fadeInSec: real(),
+    fadeOutSec: real(),
     volume: integer().notNull().default(100),
     onEnd: text({ enum: ["resume_background", "stop"] })
       .notNull()

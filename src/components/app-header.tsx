@@ -7,7 +7,7 @@ export function AppHeader({ user }: { user: User }) {
   return (
     <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
       <nav className="flex items-center gap-4 text-sm">
-        <Link href="/events">Sự kiện</Link>
+        <Link href="/events">Chương trình</Link>
         <Link href="/library">Kho nhạc</Link>
         {user.isAdmin ? <Link href="/admin/users">Người dùng</Link> : null}
       </nav>
