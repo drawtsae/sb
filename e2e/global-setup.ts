@@ -9,6 +9,13 @@ export default async function globalSetup(config: FullConfig) {
   const authDir = path.join(__dirname, ".auth");
   fs.mkdirSync(authDir, { recursive: true });
 
+  // Audio fixtures (tone wavs + garbage.mp3) used by the library specs.
+  execFileSync(
+    process.execPath,
+    [path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), "scripts/make-fixtures.ts"],
+    { stdio: "inherit" },
+  );
+
   const admin = { email: "admin@test.local", password: process.env.E2E_ADMIN_PASSWORD! };
   const op = { email: "op@test.local", password: crypto.randomBytes(18).toString("base64url") };
 

@@ -8,7 +8,7 @@ export function AppHeader({ user }: { user: User }) {
     <header className="flex items-center justify-between gap-4 border-b px-4 py-3">
       <nav className="flex items-center gap-4 text-sm">
         <Link href="/events">Sự kiện</Link>
-        <Link href="/library">Thư viện</Link>
+        <Link href="/library">Kho nhạc</Link>
         {user.isAdmin ? <Link href="/admin/users">Người dùng</Link> : null}
       </nav>
       <form action={logout} className="flex items-center gap-3">
