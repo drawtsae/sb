@@ -328,7 +328,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
           </Button>
         </div>
       </div>
-      {leaveError ? (
+      {leaveError && overall !== "saved" ? (
         <p role="alert" className="text-sm text-destructive">
           {leaveError}
         </p>

@@ -94,6 +94,15 @@ describe("EditorClient", () => {
     expect(actions.upsertCueAction).toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi nạp");
+
+    // Once the retry saves it, the message goes away and the button navigates.
+    actions.upsertCueAction.mockResolvedValue({ ok: true, data: cue("c2", 1, "Hai sửa") });
+    fireEvent.click(indicator());
+    await flushAsync();
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & nạp" }));
+    await flushAsync();
+    expect(push).toHaveBeenCalledWith("/events/e1/load");
   });
 
   it("Kiểm tra & nạp refuses while a structural save (reorder) is in error", async () => {
