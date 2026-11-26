@@ -81,6 +81,8 @@ máy, trình duyệt vào cuối file.
 - [ ] Đăng nhập, tải lên một bài nhạc, tạo một chương trình.
 - [ ] **Khởi động lại container, dữ liệu còn nguyên:** chạy `docker compose restart app`; đăng
       nhập lại thì bài nhạc và chương trình vẫn còn, phát được.
+- [ ] Chạy `docker compose down && docker compose up -d` (**không** dùng `-v`); đăng nhập lại,
+      bài nhạc và chương trình vẫn còn.
 - [ ] Kiểm tra `sw.js` là bản mới: số in ra bởi lệnh sau phải lớn hơn 0:
       `curl -s https://<DOMAIN>/sw.js | grep -c "$(docker compose exec -T app cat .next/BUILD_ID)"`
 - [ ] Cổng 3000 không truy cập được trực tiếp từ ngoài (chỉ qua Caddy).

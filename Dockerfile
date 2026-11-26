@@ -3,7 +3,8 @@ FROM node:24-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 # better-sqlite3 and @node-rs/argon2 ship prebuilt binaries for linux-x64/arm64 glibc.
-# If npm ever has to compile them, add: apt-get install -y python3 make g++
+# Normally no toolchain is needed (better-sqlite3 13.2.0 ships prebuilds, no install script).
+# Only if npm ever has to compile them, add: apt-get install -y python3 make g++
 RUN npm ci
 
 FROM node:24-slim AS build

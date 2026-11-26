@@ -16,10 +16,13 @@ services:
 
   caddy:
     image: caddy:2
-    env_file: .env
+    environment:
+      DOMAIN: "${DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL}"
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -29,6 +32,9 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Pinned name: without it compose prefixes the project name, and
+  # `docker run -v soundboard-data:/data` would hit a different, empty volume.
   soundboard-data:
+    name: soundboard-data
   caddy-data:
   caddy-config:
