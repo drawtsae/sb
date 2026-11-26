@@ -30,6 +30,8 @@ export function CueColumn({
         {snap.cues.map((c, i) => {
           const isCurrent = i === current;
           const played = state.playedCueIds.includes(c.id);
+          // Clicking the cue that is audibly playing would restart it from its start: ignore it.
+          const audible = state.mode === "cue" && state.cue.cueIndex === i && !state.cue.ending;
           return (
             <li key={c.id}>
               <button
@@ -38,11 +40,14 @@ export function CueColumn({
                 data-index={i}
                 data-played={played ? "true" : undefined}
                 aria-current={isCurrent ? "true" : undefined}
+                title={audible ? "Đang phát" : undefined}
                 disabled={disabled}
-                onClick={clickThen(() => onGo(i))}
+                onClick={clickThen(() => {
+                  if (!audible) onGo(i);
+                })}
                 className={`flex w-full items-baseline gap-2 rounded-lg px-3 py-2 text-left text-xl ${
                   isCurrent ? "bg-sky-500/30 font-bold ring-2 ring-sky-400" : "hover:bg-white/10"
-                } ${played && !isCurrent ? "text-white/60" : ""}`}
+                } ${audible ? "cursor-default" : ""} ${played && !isCurrent ? "text-white/60" : ""}`}
               >
                 <span className="w-6 shrink-0 text-center" aria-hidden="true">
                   {isCurrent ? "▶" : played ? "✓" : ""}

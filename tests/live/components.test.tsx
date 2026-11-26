@@ -34,6 +34,27 @@ describe("Live layout", () => {
     expect(onGo).toHaveBeenCalledWith(2);
   });
 
+  it("cue list: clicking the cue that is playing does nothing (no audible restart)", () => {
+    const onGo = vi.fn();
+    const playing = run([{ type: "GO_CUE", index: 1 }], undefined, snap).state;
+    const { rerender } = render(<CueColumn snap={snap} state={playing} disabled={false} onGo={onGo} />);
+    let rows = screen.getAllByTestId("cue-row");
+    expect(rows[1]).toHaveAttribute("title", "Đang phát");
+    fireEvent.click(rows[1], { detail: 1 });
+    expect(onGo).not.toHaveBeenCalled();
+    fireEvent.click(rows[2], { detail: 1 });
+    expect(onGo).toHaveBeenCalledWith(2);
+
+    // Once the cue is fading out (ending), clicking it plays it again.
+    onGo.mockClear();
+    const ending = { ...playing, cue: { ...playing.cue, ending: true } };
+    rerender(<CueColumn snap={snap} state={ending} disabled={false} onGo={onGo} />);
+    rows = screen.getAllByTestId("cue-row");
+    expect(rows[1]).not.toHaveAttribute("title");
+    fireEvent.click(rows[1], { detail: 1 });
+    expect(onGo).toHaveBeenCalledWith(1);
+  });
+
   it("now playing: cue with remaining time and end behaviour; silent banner; background", () => {
     const cue = run([{ type: "GO_CUE", index: 2 }], undefined, snap).state;
     const { rerender } = render(
