@@ -1,5 +1,5 @@
 /** Pure helpers that turn machine state + deck samples into what the Live screen shows. */
-import { effectiveEnd, type PlaybackState } from "@/lib/playback/machine";
+import { effectiveEnd, fadeOut, type PlaybackState } from "@/lib/playback/machine";
 import type { Cue, ShowSnapshot, Song } from "@/lib/types";
 import type { DeckInfo } from "./useLiveEngine";
 
@@ -22,13 +22,14 @@ export interface Progress {
   fraction: number;
 }
 
-function progress(t: number, start: number, end: number): Progress {
+/** `countdownTo` is where "còn m:ss" reaches zero (default: `end`). */
+function progress(t: number, start: number, end: number, countdownTo = end): Progress {
   const clamped = Math.min(Math.max(t, start), end);
   const span = end - start;
   return {
     t: clamped,
     end,
-    remaining: Math.max(0, end - clamped),
+    remaining: Math.max(0, countdownTo - clamped),
     fraction: span > 0 ? (clamped - start) / span : 0,
   };
 }
@@ -51,13 +52,17 @@ export function bgSong(state: PlaybackState, snap: ShowSnapshot, offset = 0): So
   return id ? (snap.songs[id] ?? null) : null;
 }
 
-/** Cue progress: t against the effective end (endSec or the song's end). */
+/**
+ * Cue progress: t against the effective end (endSec or the song's end). The countdown reaches
+ * zero where the fade-out starts, so the operator sees when the music begins to fade.
+ */
 export function cueProgress(state: PlaybackState, snap: ShowSnapshot, sample: Sample): Progress | null {
   const p = playingCue(state, snap);
   if (!p) return null;
   // Until the deck reports the new song, show the cue at its start rather than the old deck's time.
   const t = sample.cue.songId === p.song.id && sample.cue.duration > 0 ? sample.cue.t : p.cue.startSec;
-  return progress(t, p.cue.startSec, effectiveEnd(p.cue, p.song));
+  const end = effectiveEnd(p.cue, p.song);
+  return progress(t, p.cue.startSec, end, end - fadeOut(p.cue, snap.settings));
 }
 
 /** Background progress: t against the track's duration. */

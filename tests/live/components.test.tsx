@@ -63,7 +63,7 @@ describe("Live layout", () => {
     const now = screen.getByTestId("now-playing");
     expect(now).toHaveTextContent('ĐANG PHÁT: [Tiết mục] Cảm ơn bố mẹ — "c1"');
     expect(now).toHaveTextContent("0:42 / 1:00");
-    expect(now).toHaveTextContent("còn 0:18");
+    expect(now).toHaveTextContent("còn 0:13"); // to the fade-out start (60 − 5 s)
     expect(now).toHaveTextContent("→ hết bài: dừng");
 
     const resume = run([{ type: "GO_CUE", index: 1 }], undefined, snap).state;

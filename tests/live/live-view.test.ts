@@ -14,21 +14,21 @@ describe("live-view", () => {
     expect(clock(NaN)).toBe("0:00");
   });
 
-  it("cue remaining = effective end − t, from the cue deck", () => {
-    // q2: c1 from 0 to endSec 60.
+  it("cue remaining counts down to the fade-out start (effective end − fade out − t), from the cue deck", () => {
+    // q2: c1 from 0 to endSec 60, fade out 5 s: the fade starts at 55.
     const { state } = run([{ type: "GO_CUE", index: 2 }]);
     const p = cueProgress(state, SNAP, { bg: EMPTY_INFO, cue: info("c1", 42, 190) })!;
-    expect(p).toMatchObject({ t: 42, end: 60, remaining: 18 });
+    expect(p).toMatchObject({ t: 42, end: 60, remaining: 13 });
     expect(p.fraction).toBeCloseTo(0.7);
     // Deck not loaded yet (or still holding another song): shown at the cue start.
-    expect(cueProgress(state, SNAP, { bg: EMPTY_INFO, cue: info("b1", 100, 200) })).toMatchObject({ t: 0, remaining: 60 });
+    expect(cueProgress(state, SNAP, { bg: EMPTY_INFO, cue: info("b1", 100, 200) })).toMatchObject({ t: 0, remaining: 55 });
     // Not in cue mode: none.
     expect(cueProgress(run([{ type: "START_BACKGROUND" }]).state, SNAP, { bg: EMPTY_INFO, cue: EMPTY_INFO })).toBeNull();
   });
 
   it("cue without endSec ends at the song's end; start offset counts", () => {
-    const { state } = run([{ type: "GO_CUE", index: 1 }]); // c1 from 45, song 190 s
-    expect(cueProgress(state, SNAP, { bg: EMPTY_INFO, cue: info("c1", 100, 190) })).toMatchObject({ end: 190, remaining: 90 });
+    const { state } = run([{ type: "GO_CUE", index: 1 }]); // c1 from 45, song 190 s, default fade out 3 s
+    expect(cueProgress(state, SNAP, { bg: EMPTY_INFO, cue: info("c1", 100, 190) })).toMatchObject({ end: 190, remaining: 87 });
   });
 
   it("bg progress, paused position and titles", () => {
