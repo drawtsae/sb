@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import {
-  MUSIC_CACHE, cacheKey, getCachedBlob, loadShow, pruneMusicCache, validateCueTimes, type LoadItem,
+  MUSIC_CACHE, cacheKey, getCachedBlob, loadShow, pruneMusicCache, validateCueTimes, withProbedDurations, type LoadItem,
 } from "@/lib/offline/music-cache";
 import { DEFAULT_SETTINGS, type Cue, type ShowSnapshot, type Song } from "@/lib/types";
 
@@ -79,6 +79,20 @@ describe("loadShow", () => {
     const r = await loadShow(snapOf([s], [cue("c1", "a", { startSec: 27 })]), deps(fakeCaches(), okFetch(), async () => 25));
     expect(r.cueErrors).toEqual([{ cueId: "c1", reason: "Giây bắt đầu vượt quá độ dài bài" }]);
     expect(r.ok).toBe(false);
+  });
+
+  it("returns the probed durations", async () => {
+    const r = await loadShow(snapOf([song("a"), song("b")], []), deps(fakeCaches(), okFetch(), async () => 25.5));
+    expect(r.durations).toEqual({ a: 25.5, b: 25.5 });
+  });
+
+  it("withProbedDurations writes finite, positive probed durations into the snapshot songs", () => {
+    const snap = snapOf([song("a"), song("b"), song("c"), song("d"), song("e")], []);
+    const out = withProbedDurations(snap, { a: 25.5, b: Infinity, c: 0, d: NaN });
+    expect(Object.fromEntries(Object.values(out.songs).map((s) => [s.id, s.durationSec]))).toEqual({
+      a: 25.5, b: 30, c: 30, d: 30, e: 30,
+    });
+    expect(snap.songs.a.durationSec).toBe(30); // the input is not mutated
   });
 
   it("a truncated download is retried, then fails", async () => {

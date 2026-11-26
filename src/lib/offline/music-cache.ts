@@ -68,7 +68,7 @@ export async function loadShow(
     /** Delay between retries; injectable so tests stay fast. */
     sleep?: (ms: number) => Promise<void>;
   },
-): Promise<{ ok: boolean; items: LoadItem[]; cueErrors: CueError[] }> {
+): Promise<{ ok: boolean; items: LoadItem[]; cueErrors: CueError[]; durations: Record<string, number> }> {
   const songs = Object.values(snap.songs);
   const items: LoadItem[] = songs.map((s) => ({ songId: s.id, title: s.title, status: "pending" }));
   const bytesTotal = songs.reduce((n, s) => n + s.fileSize, 0);
@@ -162,7 +162,20 @@ export async function loadShow(
 
   const cueErrors = validateCueTimes(snap, durations);
   const ok = items.every((i) => i.status === "ok") && cueErrors.length === 0;
-  return { ok, items, cueErrors };
+  return { ok, items, cueErrors, durations };
+}
+
+/**
+ * The snapshot with each song's durationSec replaced by the duration this browser probed (when
+ * finite and > 0), so Live's machine computes the same end as the audio element will reach.
+ */
+export function withProbedDurations(snap: ShowSnapshot, durations: Record<string, number>): ShowSnapshot {
+  const songs: Record<string, Song> = {};
+  for (const [id, song] of Object.entries(snap.songs)) {
+    const d = durations[id];
+    songs[id] = Number.isFinite(d) && d > 0 ? { ...song, durationSec: d } : song;
+  }
+  return { ...snap, songs };
 }
 
 /** Deletes every cached music entry that does not belong to a kept song. Returns how many were deleted. */
