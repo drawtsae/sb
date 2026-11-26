@@ -203,10 +203,8 @@ test("duplicating a middle cue, editing and reordering persists in order", async
 test("an edit made right before navigating away is flushed", async ({ page }) => {
   await page.goto(editorUrl);
   await page.getByTestId("cue-item").nth(0).getByLabel("Tên tiết mục").fill("Đón khách VIP");
-  // The flush fires a Server Action (a POST) while we navigate; let it finish.
-  const flushed = page.waitForResponse((r) => r.request().method() === "POST");
-  await page.getByRole("link", { name: "← Chương trình" }).click();
-  await flushed;
+  // "← Chương trình" flushes the debounced save and waits for it before navigating.
+  await page.getByRole("button", { name: "← Chương trình" }).click();
   await page.waitForURL(/\/events$/);
   await page.goto(editorUrl);
   await expect(page.getByTestId("cue-item").nth(0).getByLabel("Tên tiết mục")).toHaveValue("Đón khách VIP");
