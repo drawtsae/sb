@@ -1,43 +1,28 @@
+# Portainer stack (Stacks → Add stack → paste this, or point "Repository" at this repo).
+# Every setting comes from the stack's "Environment variables" section — no .env file is
+# mounted. See .env.production.example for the list (Portainer can load it with
+# "Load variables from .env file").
+#
+# HTTPS is required for the offline mode (service worker + Cache Storage). Put the app
+# behind your own reverse proxy with TLS (Nginx Proxy Manager, Traefik, Cloudflare Tunnel…)
+# and set TRUST_PROXY_HOPS=1 so the login rate limit sees the real client IP.
 services:
   app:
-    # Prebuilt by .github/workflows/docker.yml: `docker compose pull && docker compose up -d`.
-    # `docker compose up -d --build` still builds locally from ./Dockerfile instead.
-    image: ghcr.io/drawtsae/sb:latest
-    build: .
-    env_file: .env
+    image: ghcr.io/drawtsae/sb:${IMAGE_TAG:-latest}
+    restart: unless-stopped
     environment:
-      DATA_DIR: /data
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+    ports:
+      - "${APP_PORT:-3000}:3000"
     volumes:
       - soundboard-data:/data
-    restart: unless-stopped
-    # NOTE: no `ports:` on purpose. Only Caddy is published (80/443).
-    # Login rate limiting keys on the first X-Forwarded-For entry. Caddy sets that
-    # from the real client IP (it does not trust an incoming XFF), so the app must
-    # only be reachable through Caddy. Do not publish port 3000.
-    expose:
-      - "3000"
-
-  caddy:
-    image: caddy:2
-    environment:
-      DOMAIN: "${DOMAIN}"
-      ACME_EMAIL: "${ACME_EMAIL}"
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - app
-    restart: unless-stopped
 
 volumes:
-  # Pinned name: without it compose prefixes the project name, and
-  # `docker run -v soundboard-data:/data` would hit a different, empty volume.
+  # Pinned name: without it the stack name is prefixed, and backup/restore commands
+  # (`docker run -v soundboard-data:/data …`) would hit a different, empty volume.
   soundboard-data:
     name: soundboard-data
-  caddy-data:
-  caddy-config:
