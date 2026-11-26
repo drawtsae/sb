@@ -71,5 +71,11 @@ test("admin can create and delete a user", async ({ page }) => {
   const row = page.getByRole("row", { name: /new@test\.local/ });
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: "Xoá" }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm).toContainText("Xoá tài khoản này? Không thể hoàn tác.");
+  await confirm.getByRole("button", { name: "Huỷ" }).click();
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "Xoá" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Xoá" }).click();
   await expect(page.getByRole("row", { name: /new@test\.local/ })).toHaveCount(0);
 });

@@ -5,6 +5,7 @@ import { requireAdmin } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
 import { listUsers } from "@/server/repo/users";
 import { createUserAction, deleteUserAction, resetPasswordAction } from "./actions";
+import { DeleteUserForm } from "./DeleteUserForm";
 
 const input =
   "h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -90,12 +91,7 @@ export default async function UsersPage({ searchParams }: SP) {
                 </td>
                 <td className="py-2 text-right">
                   {u.id !== me.id ? (
-                    <form action={deleteUserAction}>
-                      <input type="hidden" name="id" value={u.id} />
-                      <Button type="submit" variant="destructive" size="sm">
-                        Xoá
-                      </Button>
-                    </form>
+                    <DeleteUserForm id={u.id} email={u.email} action={deleteUserAction} />
                   ) : null}
                 </td>
               </tr>
