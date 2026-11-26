@@ -23,6 +23,7 @@ export function CueList({
   onChange,
   onSave,
   onStatus,
+  onFlusher,
   onReorder,
   onDuplicate,
   onDelete,
@@ -35,6 +36,7 @@ export function CueList({
   onChange: (key: string, patch: Partial<Cue>) => void;
   onSave: (key: string, cue: Cue) => Promise<void>;
   onStatus: (key: string, status: SaveStatus | null, retry?: () => void) => void;
+  onFlusher: (key: string, flush: (() => Promise<boolean>) | null) => void;
   onReorder: (keys: string[]) => void;
   onDuplicate: (key: string) => void;
   onDelete: (key: string) => void;
@@ -67,6 +69,7 @@ export function CueList({
               onChange={(patch) => onChange(item.key, patch)}
               onSave={(c) => onSave(item.key, c)}
               onStatus={onStatus}
+              onFlusher={onFlusher}
               onMove={move}
               onDuplicate={() => onDuplicate(item.key)}
               onDelete={() => setDeleting(item)}

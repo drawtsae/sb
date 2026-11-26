@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { Cue, EventDetail, EventSettings, Song } from "@/lib/types";
 import {
   addBackgroundTrackAction,
@@ -20,6 +21,8 @@ import { SettingsPanel } from "./SettingsPanel";
 import type { SaveStatus } from "./useAutosave";
 
 const SONG_REQUIRED = "Tiết mục loại Bài riêng phải chọn bài hát";
+const UNSAVED_LOAD = "Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi nạp";
+const UNSAVED_LEAVE = "Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi rời trang";
 
 function issueMessage(issues: { path: (string | number)[]; message: string }[] | undefined): string {
   const first = issues?.[0];
@@ -47,6 +50,7 @@ type StatusMap = Record<string, { status: SaveStatus; retry?: () => void }>;
 
 export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSongs: Song[] }) {
   const eventId = detail.event.id;
+  const router = useRouter();
   const [songs] = useState(() => {
     const m: Record<string, Song> = { ...detail.songs };
     for (const s of allSongs) m[s.id] = s;
@@ -58,6 +62,8 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   const [settings, setSettings] = useState<EventSettings>(detail.event.settings);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [statuses, setStatuses] = useState<StatusMap>({});
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   const itemsRef = useRef(items);
   useEffect(() => {
@@ -67,19 +73,33 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   const chains = useRef(new Map<string, Promise<void>>());
   const counter = useRef(0);
   const deletedKeys = useRef(new Set<string>());
+  /** Mirrors `statuses` synchronously, so leaving the page can check it right after awaiting. */
+  const statusesRef = useRef<StatusMap>({});
+  /** Structural saves (track) still running. */
+  const ops = useRef(new Set<Promise<void>>());
+  /** Autosave flushes of the cue editors and the settings panel, by status key. */
+  const flushers = useRef(new Map<string, () => Promise<boolean>>());
 
   const setStatus = useCallback((key: string, status: SaveStatus | null, retry?: () => void) => {
-    setStatuses((prev) => {
-      if (status === null) {
-        if (!(key in prev)) return prev;
-        const next = { ...prev };
+    const prev = statusesRef.current;
+    let next = prev;
+    if (status === null) {
+      if (key in prev) {
+        next = { ...prev };
         delete next[key];
-        return next;
       }
+    } else {
       const cur = prev[key];
-      if (cur && cur.status === status && cur.retry === retry) return prev;
-      return { ...prev, [key]: { status, retry } };
-    });
+      if (!cur || cur.status !== status || cur.retry !== retry) next = { ...prev, [key]: { status, retry } };
+    }
+    if (next === prev) return;
+    statusesRef.current = next;
+    setStatuses(next);
+  }, []);
+
+  const setFlusher = useCallback((key: string, flush: (() => Promise<boolean>) | null) => {
+    if (flush) flushers.current.set(key, flush);
+    else flushers.current.delete(key);
   }, []);
 
   function setError(key: string, message: string | null) {
@@ -92,15 +112,20 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
     });
   }
 
-  /** Run a structural save, reflecting it in the indicator; failures offer a retry. */
-  async function track(key: string, fn: () => Promise<void>): Promise<void> {
-    setStatus(key, "saving");
-    try {
-      await fn();
-      setStatus(key, null);
-    } catch {
-      setStatus(key, "error", () => void track(key, fn));
-    }
+  /** Run a structural save, reflecting it in the indicator; failures offer a retry. Never rejects. */
+  function track(key: string, fn: () => Promise<void>): Promise<void> {
+    const p = (async () => {
+      setStatus(key, "saving");
+      try {
+        await fn();
+        setStatus(key, null);
+      } catch {
+        setStatus(key, "error", () => void track(key, fn));
+      }
+    })();
+    ops.current.add(p);
+    void p.then(() => ops.current.delete(p));
+    return p;
   }
 
   async function settled(): Promise<void> {
@@ -139,10 +164,15 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
       });
     chains.current.set(
       key,
-      p.then(() => undefined),
+      p.then(
+        () => undefined,
+        () => undefined,
+      ),
     );
+    // Tracked (not awaited inside the chain): a failure shows "Lỗi lưu, thử lại", and the retry
+    // re-reads the current order.
     return p.then(async (needsOrder) => {
-      if (needsOrder) await pushCueOrder().catch(() => undefined);
+      if (needsOrder) await track("op:reorder:cues", pushCueOrder);
     });
   }
 
@@ -245,22 +275,64 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
     for (const s of entries) if (s.status === "error") s.retry?.();
   }
 
+  /**
+   * Saves everything still pending (debounced cue and settings edits, structural saves) and waits
+   * for it. True when the server has every change; false while any save is in error.
+   */
+  async function flushAll(): Promise<boolean> {
+    // Let an edit committed by this same click (e.g. a field's blur) reach its autosave first.
+    await new Promise((r) => setTimeout(r, 0));
+    const results = await Promise.all([...flushers.current.values()].map((f) => f()));
+    while (ops.current.size > 0) await Promise.all([...ops.current]);
+    await settled();
+    const opError = Object.entries(statusesRef.current).some(([k, s]) => k.startsWith("op:") && s.status === "error");
+    return results.every(Boolean) && !opError;
+  }
+
+  async function leave(href: string, unsavedMessage: string) {
+    if (leaving) return;
+    setLeaving(true);
+    setLeaveError(null);
+    if (await flushAll()) {
+      router.push(href);
+      return;
+    }
+    setLeaving(false);
+    setLeaveError(unsavedMessage);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-baseline gap-3">
-          <Link href="/events" className="text-sm text-muted-foreground underline">
+          <button
+            type="button"
+            disabled={leaving}
+            onClick={() => void leave("/events", UNSAVED_LEAVE)}
+            className="text-sm text-muted-foreground underline"
+          >
             ← Chương trình
-          </Link>
+          </button>
           <h1 className="text-xl font-semibold">{detail.event.name}</h1>
         </div>
         <div className="flex items-center gap-4">
           <SaveIndicator status={overall} onRetry={retryAll} />
-          <Link href={`/events/${eventId}/load`} className="text-sm underline">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={leaving}
+            onClick={() => void leave(`/events/${eventId}/load`, UNSAVED_LOAD)}
+          >
             Kiểm tra &amp; nạp
-          </Link>
+          </Button>
         </div>
       </div>
+      {leaveError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {leaveError}
+        </p>
+      ) : null}
 
       <BackgroundList
         tracks={bg}
@@ -280,6 +352,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
         onChange={patchCue}
         onSave={saveCue}
         onStatus={setStatus}
+        onFlusher={setFlusher}
         onReorder={reorderCuesLocal}
         onDuplicate={duplicateCue}
         onDelete={deleteCue}
@@ -292,6 +365,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
           must(await updateSettingsAction(eventId, s));
         }}
         onStatus={setStatus}
+        onFlusher={setFlusher}
       />
     </div>
   );

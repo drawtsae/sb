@@ -51,4 +51,20 @@ test("load page blocks on a bad cue, then enables Bắt đầu tiệc after the 
   await expect(page.getByRole("button", { name: "Bắt đầu tiệc" })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Thử chế độ offline" })).toBeEnabled();
   expect(await page.evaluate(() => localStorage.getItem("sb:snapshot"))).not.toBeNull();
+  const summary = page.getByTestId("load-summary");
+  await expect(summary.getByTestId("summary-row")).toHaveCount(2);
+  await expect(summary.getByTestId("summary-row").last()).toContainText("0:05");
+  await expect(summary.getByTestId("summary-background")).toContainText("load-tone-a-20s");
+
+  // Edit, then leave for the Load page at once (no wait for "Đã lưu"): the button flushes and
+  // awaits the pending save, so the frozen script has the new start.
+  await page.goto(editorUrl);
+  const again = page.getByTestId("cue-item").last().getByLabel("Giây bắt đầu", { exact: true });
+  await again.fill("0:09");
+  await page.getByRole("button", { name: "Kiểm tra & nạp" }).click();
+  await page.waitForURL(/\/load$/);
+  const row = page.getByTestId("load-summary").getByTestId("summary-row").last();
+  await expect(row).toContainText("Tiết mục load-tone-b-20s", { timeout: 30_000 });
+  await expect(row).toContainText("0:09");
+  await expect(row).toContainText("hết bài");
 });

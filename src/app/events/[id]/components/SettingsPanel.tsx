@@ -10,17 +10,23 @@ export function SettingsPanel({
   onChange,
   onSave,
   onStatus,
+  onFlusher,
 }: {
   settings: EventSettings;
   onChange: (patch: Partial<EventSettings>) => void;
   onSave: (s: EventSettings) => Promise<void>;
   onStatus: (key: string, status: SaveStatus | null, retry?: () => void) => void;
+  onFlusher: (key: string, flush: (() => Promise<boolean>) | null) => void;
 }) {
-  const { status, retry } = useAutosave(settings, onSave);
+  const { status, retry, flush } = useAutosave(settings, onSave);
   useEffect(() => {
     onStatus("settings", status, retry);
   }, [onStatus, status, retry]);
   useEffect(() => () => onStatus("settings", null), [onStatus]);
+  useEffect(() => {
+    onFlusher("settings", flush);
+    return () => onFlusher("settings", null);
+  }, [onFlusher, flush]);
 
   const sec = (label: string, key: "cueFadeSec" | "bgCrossfadeSec" | "stopFadeSec") => (
     <NumberField

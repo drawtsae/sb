@@ -23,6 +23,7 @@ export function CueEditor({
   onChange,
   onSave,
   onStatus,
+  onFlusher,
   onMove,
   onDuplicate,
   onDelete,
@@ -38,17 +39,22 @@ export function CueEditor({
   onChange: (patch: Partial<Cue>) => void;
   onSave: (cue: Cue) => Promise<void>;
   onStatus: (key: string, status: SaveStatus | null, retry?: () => void) => void;
+  onFlusher: (key: string, flush: (() => Promise<boolean>) | null) => void;
   onMove: (delta: -1 | 1) => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const { status, retry } = useAutosave(cue, onSave);
+  const { status, retry, flush } = useAutosave(cue, onSave);
   const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     onStatus(`cue:${cueKey}`, status, retry);
   }, [onStatus, cueKey, status, retry]);
   useEffect(() => () => onStatus(`cue:${cueKey}`, null), [onStatus, cueKey]);
+  useEffect(() => {
+    onFlusher(`cue:${cueKey}`, flush);
+    return () => onFlusher(`cue:${cueKey}`, null);
+  }, [onFlusher, cueKey, flush]);
 
   const isSong = cue.kind === "song";
 
