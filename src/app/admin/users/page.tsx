@@ -1,6 +1,6 @@
 import type { SP } from "@/lib/page-props";
 import { AppHeader } from "@/components/app-header";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
 import { listUsers } from "@/server/repo/users";
@@ -27,6 +27,11 @@ export default async function UsersPage({ searchParams }: SP) {
       <AppHeader user={me} />
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
         <h1 className="text-xl font-semibold">Người dùng</h1>
+        <div>
+          <a href="/api/admin/backup" download className={buttonVariants({ variant: "outline" })}>
+            Tải bản sao lưu database
+          </a>
+        </div>
         {error ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
