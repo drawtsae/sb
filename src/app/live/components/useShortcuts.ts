@@ -11,12 +11,19 @@ export interface ShortcutHandlers {
 
 export const VOLUME_STEP = 0.05;
 
+/** Input types that take typed text. Range, checkbox, radio, button… are not typing targets. */
+const TEXT_INPUT_TYPES = new Set(["text", "search", "number", "email", "password", "tel", "url"]);
+
 /** Typing targets keep their keys (and Space types a space). */
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  if (target.closest("input, textarea, select")) return true;
+  if (target instanceof HTMLInputElement) return TEXT_INPUT_TYPES.has(target.type);
+  if (target.closest("textarea, select")) return true;
   return Boolean(target.closest('[contenteditable]:not([contenteditable="false"])'));
 }
+
+/** A focused slider moves itself on arrow keys; adding our ±5% on top would double the step. */
+const isRange = (target: EventTarget | null) => target instanceof HTMLInputElement && target.type === "range";
 
 const isSpace = (e: KeyboardEvent) => e.key === " " || e.code === "Space";
 
@@ -30,12 +37,15 @@ function letter(e: KeyboardEvent): string | null {
 /**
  * Live keyboard shortcuts (spec §6.6): N next cue, B background, F fade out & stop, ↑/↓ master
  * ±0.05. Space is deliberately unassigned and swallowed so it cannot press a focused button.
- * Ignored: typing targets, auto-repeat, and Ctrl/Alt/Meta combinations (browser shortcuts).
+ * Ignored: typing targets (text-like inputs, textarea, select, contenteditable), auto-repeat,
+ * Ctrl/Alt/Meta combinations (browser shortcuts), and everything but Space while `enabled` is false.
  */
-export function useShortcuts(h: ShortcutHandlers): void {
+export function useShortcuts(h: ShortcutHandlers, enabled = true): void {
   const ref = useRef(h);
+  const enabledRef = useRef(enabled);
   useEffect(() => {
     ref.current = h;
+    enabledRef.current = enabled;
   });
 
   useEffect(() => {
@@ -46,8 +56,10 @@ export function useShortcuts(h: ShortcutHandlers): void {
         return;
       }
       if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (!enabledRef.current) return; // e.g. the exit confirm dialog is open
       const handlers = ref.current;
       let action: (() => void) | null = null;
+      if ((e.key === "ArrowUp" || e.key === "ArrowDown") && isRange(e.target)) return;
       if (e.key === "ArrowUp") action = () => handlers.volume(VOLUME_STEP);
       else if (e.key === "ArrowDown") action = () => handlers.volume(-VOLUME_STEP);
       else {

@@ -47,6 +47,25 @@ describe("saveLive / readLive", () => {
   });
 });
 
+describe("readLive with the snapshot's takenAt", () => {
+  it("returns a state saved for the same snapshot", () => {
+    saveLive("e1", { ...SAVED, snapshotTakenAt: "T1" });
+    expect(readLive("e1", "T1")).toMatchObject({ currentCueIndex: 1 });
+  });
+
+  it("ignores and clears a state saved for another snapshot (rehearsal, then a re-load)", () => {
+    saveLive("e1", { ...SAVED, snapshotTakenAt: "T1" });
+    expect(readLive("e1", "T2")).toBeNull();
+    expect(localStorage.getItem(LIVE_KEY("e1"))).toBeNull();
+  });
+
+  it("ignores and clears a state without snapshotTakenAt", () => {
+    saveLive("e1", SAVED);
+    expect(readLive("e1", "T1")).toBeNull();
+    expect(localStorage.getItem(LIVE_KEY("e1"))).toBeNull();
+  });
+});
+
 describe("restoreState", () => {
   it("marks played cues, mode silent, bg not started, resumeAtSec = bgPositionSec", () => {
     const s = restoreState(SNAP, SAVED);
@@ -97,7 +116,7 @@ describe("captureLive", () => {
     const p = captureLive(state, SNAP, info("b1", 73.2, 200), null, now);
     expect(p).toEqual({
       currentCueIndex: 1, playedCueIds: ["q1"], bgOrder: [0, 1], bgPos: 0, bgPositionSec: 73.2,
-      master: SNAP.settings.masterVolume, savedAt: now.toISOString(),
+      master: SNAP.settings.masterVolume, snapshotTakenAt: SNAP.takenAt, savedAt: now.toISOString(),
     });
   });
 

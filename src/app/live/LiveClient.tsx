@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
@@ -15,7 +14,7 @@ import { CueColumn } from "./components/CueColumn";
 import { NowPlaying } from "./components/NowPlaying";
 import { createActionGuard } from "./components/action-guard";
 import { nextCueIndex, type Sample } from "./components/live-view";
-import { EMPTY_INFO, MISSING_MUSIC, useLiveEngine } from "./components/useLiveEngine";
+import { AUDIO_FAILED, EMPTY_INFO, MISSING_MUSIC, useLiveEngine } from "./components/useLiveEngine";
 import { useShortcuts } from "./components/useShortcuts";
 import { useWakeLock } from "./components/useWakeLock";
 
@@ -74,7 +73,8 @@ function EmptyLive() {
 
 /** One show, frozen by LiveClient for the whole session. A saved live state offers a resume first. */
 function LiveShow({ snap }: { snap: ShowSnapshot }) {
-  const [saved] = useState(() => readLive(snap.eventId));
+  // A state saved with another snapshot (rehearsal, then a re-load) is cleared, not offered.
+  const [saved] = useState(() => readLive(snap.eventId, snap.takenAt));
   const [initial, setInitial] = useState<PlaybackState | null>(() => (saved ? null : initialState(snap)));
 
   if (!initial) {
@@ -138,9 +138,10 @@ const SAMPLE_MS = 250;
 
 /** The Live controller (spec §6.5, §6.6, §6.9). */
 function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: PlaybackState }) {
-  const router = useRouter();
   const decksRef = useRef<HTMLDivElement>(null);
-  const { state, dispatch, getState, deckInfo, started, ready, error, start } = useLiveEngine(snap, {
+  const {
+    state, dispatch, getState, deckInfo, started, ready, error, start, audioSuspended, resumeAudio, clearSaved,
+  } = useLiveEngine(snap, {
     initial,
     container: decksRef,
   });
@@ -169,7 +170,8 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
     if (!exitingRef.current) dispatch({ type: "SET_MASTER", to: Math.round(to * 100) / 100 });
   };
 
-  useShortcuts({ next, background, fadeStop, volume: (d) => setMaster(getState().master + d) });
+  // Off while the exit confirm is open: N/B/F there would act behind the dialog.
+  useShortcuts({ next, background, fadeStop, volume: (d) => setMaster(getState().master + d) }, !confirmExit);
   useWakeLock(started && !exiting);
 
   // Progress display: sampled from the driver, never fed back into the machine.
@@ -206,7 +208,11 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
     dispatch({ type: "FADE_STOP" });
     // Waits even from silent: a cue may still be on its own fade-out after ending into silence.
     if (!wasIdle) await sleep(snap.settings.stopFadeSec * 1000 + EXIT_MARGIN_MS);
-    router.push("/events");
+    // A deliberate exit is not a crash: no "Tiếp tục từ chỗ cũ" next time.
+    clearSaved();
+    // Full navigation, like "Bắt đầu tiệc" (beforeunload is skipped while exiting).
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full navigation
+    window.location.assign("/events");
   };
 
   const nextIndex = nextCueIndex(state, snap);
@@ -226,6 +232,16 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
           Thoát chế độ Live
         </button>
       </header>
+
+      {started && audioSuspended ? (
+        <button
+          type="button"
+          onClick={resumeAudio}
+          className="rounded-xl border-2 border-amber-300 bg-amber-500 px-4 py-3 text-2xl font-bold text-black hover:bg-amber-400"
+        >
+          Âm thanh bị tạm dừng bởi trình duyệt — bấm vào đây để bật lại
+        </button>
+      ) : null}
 
       <NowPlaying snap={snap} state={state} sample={sample} />
 
@@ -288,6 +304,15 @@ function StartOverlay({
           <p role="alert" className="max-w-xl text-3xl font-bold text-red-300">
             {error}
           </p>
+          {error === AUDIO_FAILED ? (
+            <button
+              type="button"
+              onClick={onStart}
+              className="min-h-16 rounded-xl bg-emerald-500 px-8 text-2xl font-bold text-black hover:bg-emerald-400"
+            >
+              Thử lại
+            </button>
+          ) : null}
           {error === MISSING_MUSIC ? (
             <Link
               href={`/events/${snap.eventId}/load`}

@@ -73,6 +73,10 @@ describe("Live layout", () => {
     expect(master).toHaveValue("90");
     fireEvent.change(master, { target: { value: "60" } });
     expect(onMaster).toHaveBeenCalledWith(0.6);
+    // A mouse drag must not leave the slider focused.
+    master.focus();
+    fireEvent.pointerUp(master);
+    expect(master).not.toHaveFocus();
   });
 
   it("control bar: labels follow the mode; no instant stop; a mouse click drops focus", () => {

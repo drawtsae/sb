@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
+import { clearLive } from "@/lib/offline/live-persist";
 import { readSnapshot, saveSnapshot } from "@/lib/offline/snapshot";
 import { loadShow, probeAudio, pruneMusicCache, type CueError, type LoadItem } from "@/lib/offline/music-cache";
 import type { ShowSnapshot } from "@/lib/types";
@@ -79,6 +80,7 @@ export function LoadClient({ eventId }: { eventId: string }) {
         setCueErrors(result.cueErrors);
         if (result.ok) {
           saveSnapshot(s);
+          clearLive(s.eventId); // a live state saved with the previous snapshot no longer applies
           setSaved(true);
           await pruneMusicCache(Object.values(s.songs), caches).catch(() => 0);
         }

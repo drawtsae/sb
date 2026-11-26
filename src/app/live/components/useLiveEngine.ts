@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { createAudioDriver, type AudioDriver, type AudioDriverOptions } from "@/lib/playback/audio-driver";
 import { initialState, reduce, type Deck, type PlaybackEvent, type PlaybackState } from "@/lib/playback/machine";
 import { getCachedBlob } from "@/lib/offline/music-cache";
-import { captureLive, readLive, saveLive, type LivePersisted } from "@/lib/offline/live-persist";
+import { captureLive, clearLive, readLive, saveLive, type LivePersisted } from "@/lib/offline/live-persist";
 import type { ShowSnapshot } from "@/lib/types";
 
 export const MISSING_MUSIC = "Thiếu nhạc trong bộ nhớ — quay lại Kiểm tra & nạp";
@@ -15,8 +15,21 @@ export const SAVE_EVERY_MS = 5000;
 const RESUME_WAIT_MS = 1000;
 /** Margin after the unmount fade-out before the driver is disposed. */
 const UNMOUNT_MARGIN_MS = 300;
+/** A context the browser suspended/interrupted mid-show is resumed every 1 s, 10 times, then every 5 s. */
+const RESUME_RETRY_FAST_MS = 1000;
+const RESUME_RETRY_FAST_TRIES = 10;
+const RESUME_RETRY_SLOW_MS = 5000;
 
-export type DeckInfo = ReturnType<AudioDriver["deckInfo"]>;
+/** ctx.resume() called synchronously (keeps a click's user activation); failures are ignored. */
+function safeResume(ctx: AudioContext) {
+  try {
+    void ctx.resume().catch(() => {});
+  } catch {
+    /* closed or unsupported */
+  }
+}
+
+export type DeckInfo =ReturnType<AudioDriver["deckInfo"]>;
 export const EMPTY_INFO: DeckInfo = { songId: null, t: 0, duration: 0, paused: true };
 
 /** Injectable for tests; the defaults are the browser's. */
@@ -49,8 +62,14 @@ export interface LiveEngine {
   ready: boolean;
   error: string | null;
   started: boolean;
-  /** Call from a click (autoplay policy): creates the AudioContext and the driver. */
+  /** Call from a click (autoplay policy): creates the AudioContext and the driver. Also the retry. */
   start(): Promise<void>;
+  /** The running context was suspended or interrupted by the browser/OS: audio is not reaching the speakers. */
+  audioSuspended: boolean;
+  /** Resume the context; call from a click so the user gesture counts. */
+  resumeAudio(): void;
+  /** Deliberate exit: forget the saved live state and stop saving it (no resume prompt next time). */
+  clearSaved(): void;
 }
 
 export interface LiveEngineOptions {
@@ -71,6 +90,7 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
+  const [audioSuspended, setAudioSuspended] = useState(false);
 
   const stateRef = useRef(state);
   const urlsRef = useRef<Map<string, string> | null>(null);
@@ -81,6 +101,8 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
   const startingRef = useRef(false);
   const unmountedRef = useRef(false);
   const lastSavedRef = useRef<LivePersisted | null>(null);
+  /** Set by clearSaved(): nothing is saved any more. */
+  const sessionEndedRef = useRef(false);
   /** Object URLs whose release waits for the unmount fade-out. */
   const heldUrlsRef = useRef<string[]>([]);
   const container = opts.container;
@@ -141,7 +163,8 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
           console.error("[live] driver.run failed", e);
         }
       }
-      setState(out.state);
+      // Not out.state: a driver event dispatched synchronously inside run() may have moved on.
+      setState(stateRef.current);
     },
     [snap, deps],
   );
@@ -153,17 +176,28 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
   const persist = useCallback(() => {
     const driver = driverRef.current;
     const s = stateRef.current;
-    if (!driver || s.mode === "idle") return; // nothing played yet: nothing to resume
-    const prev = lastSavedRef.current ?? readLive(snap.eventId);
+    if (!driver || s.mode === "idle" || sessionEndedRef.current) return; // idle: nothing to resume
+    const prev = lastSavedRef.current ?? readLive(snap.eventId, snap.takenAt);
     const p = captureLive(s, snap, driver.deckInfo(s.bg.activeDeck), prev);
     lastSavedRef.current = p;
     saveLive(snap.eventId, p);
   }, [snap]);
 
+  const clearSaved = useCallback(() => {
+    sessionEndedRef.current = true;
+    clearLive(snap.eventId);
+  }, [snap]);
+
+  const resumeAudio = useCallback(() => {
+    const ctx = ctxRef.current;
+    if (ctx && ctx.state !== "closed") safeResume(ctx); // synchronously, inside the click
+  }, []);
+
   const start = useCallback(async () => {
     const urls = urlsRef.current;
     if (!ready || !urls || startingRef.current || driverRef.current) return;
     startingRef.current = true;
+    setError((e) => (e === AUDIO_FAILED ? null : e)); // "Thử lại"
     let ctx: AudioContext;
     try {
       ctx = deps.createContext(); // synchronously inside the click: autoplay policy
@@ -227,10 +261,42 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
     };
   }, [started, persist]);
 
-  // Unmount (exit, or a client-side Back that beforeunload cannot catch): last save, then fade
-  // everything out like "Fade out & dừng" and only then release the driver, the context, the
-  // elements and the URLs. Detached <audio> elements keep playing through the context, so the
-  // fade completes even though the page is gone: never an abrupt cut.
+  // Keep the context running: the browser/OS can suspend or interrupt it mid-show (audio device
+  // change, another app taking audio, power saving). Resume at once, then every 1 s (10 times),
+  // then every 5 s, and flag it so the page shows a click-to-resume banner meanwhile.
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!started || !ctx) return;
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const healthy = () => ctx.state === "running" || ctx.state === "closed";
+    const check = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      const ok = healthy();
+      setAudioSuspended(!ok);
+      if (ok) {
+        tries = 0;
+        return;
+      }
+      tries += 1;
+      safeResume(ctx);
+      timer = setTimeout(check, tries < RESUME_RETRY_FAST_TRIES ? RESUME_RETRY_FAST_MS : RESUME_RETRY_SLOW_MS);
+    };
+    ctx.addEventListener("statechange", check);
+    const first = setTimeout(check, 0); // the state may already have changed since start
+    return () => {
+      ctx.removeEventListener("statechange", check);
+      clearTimeout(first);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [started]);
+
+  // Unmount (exit, or a client-side Back that beforeunload cannot catch): last save, then run the
+  // "Fade out & dừng" ramps and only later release the driver, the context, the elements and the
+  // URLs. Note: React removes the deck container with the page, and an <audio> element removed
+  // from the document is paused by the browser (HTML spec), so this fade is best-effort only;
+  // the deliberate exit fades out *before* leaving the page.
   const persistRef = useRef(persist);
   useEffect(() => {
     persistRef.current = persist;
@@ -276,10 +342,12 @@ export function useLiveEngine(snap: ShowSnapshot, opts: LiveEngineOptions = {}):
       } catch {
         /* disposing anyway */
       }
-      // From silent too: a cue may still be on its own fade-out after ending into silence.
+      // Disposal waits for the fade length (elements still in the document keep fading).
       setTimeout(finish, snap.settings.stopFadeSec * 1000 + UNMOUNT_MARGIN_MS);
     };
   }, [snap, deps]);
 
-  return { state, dispatch, getState, deckInfo, ready, error, started, start };
+  return {
+    state, dispatch, getState, deckInfo, ready, error, started, start, audioSuspended, resumeAudio, clearSaved,
+  };
 }

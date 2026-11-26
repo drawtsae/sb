@@ -64,6 +64,55 @@ describe("useShortcuts", () => {
     expect(calls()).toBe(0);
   });
 
+  it("text-like input types are typing targets; range, checkbox, radio and button inputs are not", () => {
+    const { h, calls } = setup();
+    for (const type of ["text", "search", "number", "email", "password", "tel", "url", ""]) {
+      const input = document.createElement("input");
+      if (type) input.type = type;
+      document.body.appendChild(input);
+      fireEvent.keyDown(input, { key: "f", code: "KeyF" });
+    }
+    expect(calls()).toBe(0);
+    for (const type of ["range", "checkbox", "radio", "button"]) {
+      const input = document.createElement("input");
+      input.type = type;
+      document.body.appendChild(input);
+      input.focus();
+      fireEvent.keyDown(input, { key: "f", code: "KeyF" });
+    }
+    expect(h.fadeStop).toHaveBeenCalledTimes(4);
+  });
+
+  it("with focus on the master slider (range), F and N still work; its arrows stay native", () => {
+    const { h } = setup();
+    const slider = document.createElement("input");
+    slider.type = "range";
+    document.body.appendChild(slider);
+    slider.focus();
+    fireEvent.keyDown(slider, { key: "f", code: "KeyF" });
+    fireEvent.keyDown(slider, { key: "n", code: "KeyN" });
+    expect(h.fadeStop).toHaveBeenCalledTimes(1);
+    expect(h.next).toHaveBeenCalledTimes(1);
+    // The slider moves itself on arrows; a second +5% on top would double the step.
+    expect(fireEvent.keyDown(slider, { key: "ArrowUp", code: "ArrowUp" })).toBe(true);
+    expect(h.volume).not.toHaveBeenCalled();
+    // Space on the slider is still swallowed.
+    expect(fireEvent.keyDown(slider, { key: " ", code: "Space" })).toBe(false);
+  });
+
+  it("disabled (exit confirm open): actions ignored, Space still swallowed", () => {
+    const h = { next: vi.fn(), background: vi.fn(), fadeStop: vi.fn(), volume: vi.fn() };
+    const { rerender } = renderHook(({ on }) => useShortcuts(h, on), { initialProps: { on: false } });
+    fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+    fireEvent.keyDown(document.body, { key: "ArrowUp", code: "ArrowUp" });
+    expect(h.fadeStop).not.toHaveBeenCalled();
+    expect(h.volume).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(document.body, { key: " ", code: "Space" })).toBe(false);
+    rerender({ on: true });
+    fireEvent.keyDown(document.body, { key: "f", code: "KeyF" });
+    expect(h.fadeStop).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores auto-repeat and modifier combinations (Ctrl+F stays the browser's)", () => {
     const { calls } = setup();
     fireEvent.keyDown(document.body, { key: "n", code: "KeyN", repeat: true });

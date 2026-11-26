@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MISSING_MUSIC, useLiveEngine, type EngineDeps } from "@/app/live/components/useLiveEngine";
+import { AUDIO_FAILED, MISSING_MUSIC, useLiveEngine, type EngineDeps } from "@/app/live/components/useLiveEngine";
 import { LIVE_KEY, readLive, restoreState } from "@/lib/offline/live-persist";
 import { cacheKey } from "@/lib/offline/music-cache";
 import type { AudioDriver } from "@/lib/playback/audio-driver";
@@ -17,6 +17,22 @@ function fakeCaches(missing: string[] = []) {
   } as unknown as CacheStorage;
 }
 
+/** AudioContext stand-in: resume() reaches "running" unless `stuck`; state changes fire statechange. */
+class FakeCtx extends EventTarget {
+  state: AudioContextState | "interrupted" = "suspended";
+  stuck = false;
+  resume = vi.fn(async () => {
+    if (!this.stuck) this.setState("running");
+  });
+  close = vi.fn(async () => {
+    this.state = "closed";
+  });
+  setState(s: AudioContextState | "interrupted") {
+    this.state = s;
+    this.dispatchEvent(new Event("statechange"));
+  }
+}
+
 function setup(opts: { missing?: string[]; snap?: ShowSnapshot; initial?: PlaybackState } = {}) {
   let emit: (ev: PlaybackEvent) => void = () => {};
   const info = { songId: null as string | null, t: 0, duration: 0, paused: true };
@@ -29,7 +45,7 @@ function setup(opts: { missing?: string[]; snap?: ShowSnapshot; initial?: Playba
     deckInfo: vi.fn(() => ({ ...info })),
     dispose: vi.fn(),
   } satisfies AudioDriver;
-  const ctx = { state: "suspended", resume: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  const ctx = new FakeCtx();
   let n = 0;
   const deps: Partial<EngineDeps> = {
     caches: () => fakeCaches(opts.missing),
@@ -40,7 +56,7 @@ function setup(opts: { missing?: string[]; snap?: ShowSnapshot; initial?: Playba
     rng,
   };
   const hook = renderHook(() => useLiveEngine(opts.snap ?? SNAP, { deps, initial: opts.initial }));
-  return { hook, driver, ctx, deps, info, emit: (ev: PlaybackEvent) => act(() => emit(ev)) };
+  return { hook, driver, ctx, deps, info, emit: (ev: PlaybackEvent) => act(() => emit(ev)), emitRaw: (ev: PlaybackEvent) => emit(ev) };
 }
 
 /** Polls with real setTimeout (setInterval may be faked) until `cond` holds. */
@@ -171,6 +187,100 @@ describe("useLiveEngine", () => {
     expect(vi.mocked(s.deps.revokeObjectURL!).mock.calls.map((c) => c[0]).sort())
       .toEqual(["blob:test/1", "blob:test/2", "blob:test/3"]);
     expect(localStorage.getItem(LIVE_KEY(SNAP.eventId))).toBeNull();
+  });
+
+  it("stores the snapshot's takenAt with every save", async () => {
+    const s = setup();
+    await started(s);
+    act(() => s.hook.result.current.dispatch({ type: "GO_CUE", index: 1 }));
+    expect(readLive(SNAP.eventId)?.snapshotTakenAt).toBe(SNAP.takenAt);
+  });
+
+  it("clearSaved (deliberate exit) clears the saved state and stops saving", async () => {
+    const s = setup();
+    await started(s);
+    act(() => s.hook.result.current.dispatch({ type: "GO_CUE", index: 1 }));
+    expect(readLive(SNAP.eventId)).not.toBeNull();
+    act(() => s.hook.result.current.clearSaved());
+    expect(readLive(SNAP.eventId)).toBeNull();
+    act(() => s.hook.result.current.dispatch({ type: "GO_CUE", index: 2 }));
+    window.dispatchEvent(new Event("pagehide"));
+    s.hook.unmount();
+    expect(readLive(SNAP.eventId)).toBeNull();
+  });
+
+  it("a dispatch nested inside driver.run is not overwritten by the outer one", async () => {
+    const s = setup();
+    await started(s);
+    act(() => s.hook.result.current.dispatch({ type: "START_BACKGROUND" }));
+    // The driver reports the cue as ended while still running the GO_CUE commands.
+    s.driver.run.mockImplementationOnce(() => {
+      s.emitRaw({ type: "CUE_ENDED", deck: "cue0" });
+    });
+    act(() => s.hook.result.current.dispatch({ type: "GO_CUE", index: 1 }));
+    expect(s.hook.result.current.getState().mode).toBe("background");
+    expect(s.hook.result.current.state.mode).toBe("background");
+  });
+
+  it("AudioContext failure: error, then start again (Thử lại) clears it and starts", async () => {
+    const s = setup();
+    const create = vi.mocked(s.deps.createContext!);
+    create.mockImplementationOnce(() => {
+      throw new Error("no audio");
+    });
+    await until(() => s.hook.result.current.ready);
+    await act(async () => {
+      await s.hook.result.current.start();
+    });
+    expect(s.hook.result.current.error).toBe(AUDIO_FAILED);
+    expect(s.hook.result.current.started).toBe(false);
+    await act(async () => {
+      await s.hook.result.current.start();
+    });
+    expect(s.hook.result.current.error).toBeNull();
+    expect(s.hook.result.current.started).toBe(true);
+  });
+
+  it("a context suspended/interrupted mid-show is resumed: every 1 s x10, then every 5 s; flagged until running", async () => {
+    const s = setup();
+    await started(s);
+    expect(s.hook.result.current.audioSuspended).toBe(false);
+    const base = s.ctx.resume.mock.calls.length;
+    vi.useFakeTimers();
+    s.ctx.stuck = true;
+    act(() => s.ctx.setState("interrupted"));
+    expect(s.hook.result.current.audioSuspended).toBe(true);
+    expect(s.ctx.resume.mock.calls.length - base).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9 * 1000);
+    });
+    expect(s.ctx.resume.mock.calls.length - base).toBe(10);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(s.ctx.resume.mock.calls.length - base).toBe(10); // now every 5 s
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(s.ctx.resume.mock.calls.length - base).toBe(11);
+    // The banner click resumes inside the user gesture.
+    s.ctx.stuck = false;
+    await act(async () => {
+      s.hook.result.current.resumeAudio();
+    });
+    expect(s.hook.result.current.audioSuspended).toBe(false);
+    const after = s.ctx.resume.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(s.ctx.resume.mock.calls.length).toBe(after);
+    // Suspended again later: retries start over at 1 s.
+    s.ctx.stuck = true;
+    act(() => s.ctx.setState("suspended"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(s.ctx.resume.mock.calls.length - after).toBe(2);
   });
 
   it("unmount mid-show (browser Back) fades everything out before disposing: never a cut", async () => {

@@ -65,6 +65,8 @@ export function BackgroundPanel({
             value={pct(state.master)}
             disabled={disabled}
             onChange={(e) => onMaster(Number(e.target.value) / 100)}
+            // Drop focus after a mouse/touch drag so the slider does not keep keyboard focus.
+            onPointerUp={(e) => e.currentTarget.blur()}
             className="h-3 flex-1 accent-emerald-400"
           />
           <span className="w-14 text-right font-mono text-lg tabular-nums">{pct(state.master)}%</span>

@@ -16,6 +16,8 @@ export interface LivePersisted {
   bgPositionSec: number;
   /** Master volume at save time, so a resume does not jump back to the event default. */
   master?: number;
+  /** `takenAt` of the snapshot this was saved with; a re-loaded show makes it stale. */
+  snapshotTakenAt?: string;
   savedAt: string;
 }
 
@@ -39,7 +41,21 @@ export function clearLive(eventId: string): void {
   }
 }
 
-export function readLive(eventId: string): LivePersisted | null {
+/**
+ * The saved live state for `eventId`. With `snapshotTakenAt`, a state saved with another
+ * snapshot (a rehearsal before the show was loaded again) is stale: it is cleared and ignored,
+ * since its cue index and background position may point at different cues and tracks.
+ */
+export function readLive(eventId: string, snapshotTakenAt?: string): LivePersisted | null {
+  const p = parseLive(eventId);
+  if (p && snapshotTakenAt !== undefined && p.snapshotTakenAt !== snapshotTakenAt) {
+    clearLive(eventId);
+    return null;
+  }
+  return p;
+}
+
+function parseLive(eventId: string): LivePersisted | null {
   try {
     const raw = localStorage.getItem(LIVE_KEY(eventId));
     if (!raw) return null;
@@ -52,6 +68,7 @@ export function readLive(eventId: string): LivePersisted | null {
       Number.isInteger(p.bgPos) &&
       isNum(p.bgPositionSec) && p.bgPositionSec >= 0 &&
       (p.master === undefined || isNum(p.master)) &&
+      (p.snapshotTakenAt === undefined || typeof p.snapshotTakenAt === "string") &&
       typeof p.savedAt === "string";
     return ok ? (p as LivePersisted) : null;
   } catch {
@@ -116,6 +133,7 @@ export function captureLive(
     bgPos: bg.pos,
     bgPositionSec,
     master: state.master,
+    snapshotTakenAt: snap.takenAt,
     savedAt: now.toISOString(),
   };
 }
