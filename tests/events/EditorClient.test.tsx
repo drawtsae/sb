@@ -23,7 +23,7 @@ const song: Song = {
 };
 const cue = (id: string, position: number, name: string): Cue => ({
   id, position, kind: "song", name, songId: "s1", startSec: 0, endSec: null, fadeInSec: null,
-  fadeOutSec: null, volume: 100, onEnd: "stop", note: "",
+  fadeOutSec: null, volume: 100, onEnd: "stop", note: "", transition: null,
 });
 const detail: EventDetail = {
   event: { id: "e1", name: "Tiệc", eventDate: null, settings: DEFAULT_SETTINGS, updatedAt: "t" },
@@ -123,5 +123,69 @@ describe("EditorClient", () => {
     await flushAsync();
     expect(actions.updateSettingsAction).toHaveBeenCalledWith("e1", expect.objectContaining({ cueFadeSec: 5 }));
     expect(push).toHaveBeenCalledWith("/events");
+  });
+  describe("transition fields", () => {
+    const optionTexts = (el: HTMLElement) => Array.from((el as HTMLSelectElement).options).map((o) => o.text);
+
+    it("a song cue shows Kiểu chuyển defaulting to Theo cài đặt chung", () => {
+      render(<EditorClient detail={detail} allSongs={[song]} />);
+      const sel = screen.getAllByLabelText("Kiểu chuyển")[0] as HTMLSelectElement;
+      expect(optionTexts(sel)).toEqual(["Theo cài đặt chung", "Crossfade", "Fade out → In"]);
+      expect(sel.value).toBe("");
+      expect(sel.selectedOptions[0].text).toBe("Theo cài đặt chung");
+    });
+
+    it("choosing Fade out → In saves transition fade_out_in", async () => {
+      render(<EditorClient detail={detail} allSongs={[song]} />);
+      fireEvent.change(screen.getAllByLabelText("Kiểu chuyển")[0], { target: { value: "fade_out_in" } });
+      fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & nạp" }));
+      await flushAsync();
+      expect(actions.upsertCueAction).toHaveBeenLastCalledWith("e1", expect.objectContaining({ id: "c1", transition: "fade_out_in" }));
+    });
+
+    it("choosing Theo cài đặt chung saves transition null", async () => {
+      const d: EventDetail = { ...detail, cues: [{ ...cue("c1", 0, "Một"), transition: "fade_out_in" }] };
+      render(<EditorClient detail={d} allSongs={[song]} />);
+      fireEvent.change(screen.getByLabelText("Kiểu chuyển"), { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & nạp" }));
+      await flushAsync();
+      expect(actions.upsertCueAction).toHaveBeenLastCalledWith("e1", expect.objectContaining({ id: "c1", transition: null }));
+    });
+
+    it("a background-kind cue has no Kiểu chuyển control and its row says Nhạc nền", () => {
+      const d: EventDetail = { ...detail, cues: [{ ...cue("c1", 0, "Nền"), kind: "background", songId: null }] };
+      render(<EditorClient detail={d} allSongs={[song]} />);
+      expect(screen.queryByLabelText("Kiểu chuyển")).toBeNull();
+      expect(screen.getByTestId("cue-item")).toHaveTextContent("Nhạc nền");
+    });
+
+    it("the settings panel offers only Crossfade and Fade out → In and saves defaultTransition", async () => {
+      render(<EditorClient detail={detail} allSongs={[song]} />);
+      const sel = screen.getByLabelText("Kiểu chuyển mặc định");
+      expect(optionTexts(sel)).toEqual(["Crossfade", "Fade out → In"]);
+      fireEvent.change(sel, { target: { value: "fade_out_in" } });
+      fireEvent.click(screen.getByRole("button", { name: "Kiểm tra & nạp" }));
+      await flushAsync();
+      expect(actions.updateSettingsAction).toHaveBeenCalledWith("e1", expect.objectContaining({ defaultTransition: "fade_out_in" }));
+    });
+
+    it("each cue row shows its transition text", () => {
+      const d: EventDetail = {
+        ...detail,
+        cues: [cue("c1", 0, "Một"), { ...cue("c2", 1, "Hai"), transition: "fade_out_in", fadeInSec: 2 }],
+      };
+      render(<EditorClient detail={d} allSongs={[song]} />);
+      const rows = screen.getAllByTestId("cue-item");
+      expect(rows[0]).toHaveTextContent("Crossfade 3s");
+      expect(rows[1]).toHaveTextContent("Fade out → In 3s + 2s"); // c1 fades out 3 s, then c2 fades in 2 s
+    });
+
+    it("the default transition drives the row text of cues without their own", () => {
+      render(<EditorClient detail={detail} allSongs={[song]} />);
+      const row = () => screen.getAllByTestId("cue-item")[0];
+      expect(row()).toHaveTextContent("Crossfade 3s");
+      fireEvent.change(screen.getByLabelText("Kiểu chuyển mặc định"), { target: { value: "fade_out_in" } });
+      expect(row()).toHaveTextContent("Fade out → In 3s + 3s");
+    });
   });
 });

@@ -136,7 +136,7 @@ export function SongActions({
                 autoFocus
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1.5"
+                className="h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -144,7 +144,7 @@ export function SongActions({
               <input
                 value={artist}
                 onChange={(e) => setArtist(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1.5"
+                className="h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}

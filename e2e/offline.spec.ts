@@ -100,11 +100,11 @@ test("after Kiểm tra & nạp, /live reloads offline from the SW and the music 
   const nowPlaying = page.getByTestId("now-playing");
   await page.keyboard.press("n");
   await expect(current).toContainText("Đón khách");
-  await expect(nowPlaying).toContainText("[Nhạc nền]");
+  await expect(nowPlaying).toContainText("Nhạc nền");
   await page.waitForTimeout(350); // a second N within 300 ms is treated as a double press
   await page.keyboard.press("n");
   await expect(current).toContainText("Cô dâu chú rể vào");
-  await expect(nowPlaying).toContainText("[Tiết mục]");
+  await expect(nowPlaying).toContainText("Tiết mục");
   await expect(nowPlaying).toContainText("→ hết bài: dừng");
   const cueDeck = page.locator("audio[data-deck=cue0]");
   await expect(cueDeck).toHaveAttribute("src", /^blob:/);
@@ -115,7 +115,7 @@ test("after Kiểm tra & nạp, /live reloads offline from the SW and the music 
   await page.keyboard.press("Space");
   await page.waitForTimeout(500);
   await expect(current).toContainText("Cô dâu chú rể vào");
-  await expect(nowPlaying).toContainText("[Tiết mục]");
+  await expect(nowPlaying).toContainText("Tiết mục");
 
   await page.keyboard.press("f");
   await expect(page.getByText("ĐANG IM LẶNG")).toBeVisible({ timeout: 4_000 });

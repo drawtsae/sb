@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { login, type LoginState } from "./actions";
 
 const input =
-  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 w-full";
 
 export function LoginForm({ next }: { next: string }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(login, {});
   return (
-    <form action={action} className="flex w-full max-w-sm flex-col gap-4">
+    <form action={action} className="flex w-full flex-col gap-4">
       <input type="hidden" name="next" value={next} />
       <div className="flex flex-col gap-1.5">
         <label htmlFor="email" className="text-sm font-medium">

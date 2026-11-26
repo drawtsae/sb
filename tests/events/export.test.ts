@@ -4,8 +4,8 @@ import { createTestDb, type Db } from "@/server/db/client";
 import { events, songs } from "@/server/db/schema";
 import { parseExport, toExport, type EventExportV1 } from "@/lib/events/export";
 import { importEvent } from "@/server/repo/event-import";
-import { addBackgroundTrack, createEvent, getEventDetail, upsertCue } from "@/server/repo/events";
-import type { Cue } from "@/lib/types";
+import { addBackgroundTrack, createEvent, getEventDetail, updateSettings, upsertCue } from "@/server/repo/events";
+import { DEFAULT_SETTINGS, type Cue } from "@/lib/types";
 
 const now = "2026-01-01T00:00:00.000Z";
 const addSong = (db: Db, id: string, hash: string) =>
@@ -19,7 +19,7 @@ const addSong = (db: Db, id: string, hash: string) =>
 
 const cue = (over: Partial<Cue> = {}): Cue => ({
   id: "", position: 0, kind: "song", name: "Cue", songId: "s1", startSec: 0, endSec: null,
-  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "resume_background", note: "", ...over,
+  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "resume_background", note: "", transition: null, ...over,
 });
 
 function source() {
@@ -81,6 +81,32 @@ describe("event export", () => {
     expect(d.background.map((b) => b.songId)).toEqual(["s2", "s1", "s3"]);
     expect(d.cues.map((c) => c.name)).toEqual(["A", "B", "C"]);
     expect(d.event.settings).toEqual(data.settings);
+  });
+
+  it("round-trips transition and defaultTransition", () => {
+    const db = createTestDb();
+    addSong(db, "s1", "h1");
+    const ev = createEvent(db, "T");
+    updateSettings(db, ev.id, { ...DEFAULT_SETTINGS, defaultTransition: "fade_out_in" });
+    upsertCue(db, ev.id, cue({ transition: "fade_out_in" }));
+    const data = parseExport(JSON.stringify(toExport(getEventDetail(db, ev.id)!)));
+    const { event } = importEvent(db, data);
+    const d = getEventDetail(db, event.id)!;
+    expect(d.cues[0].transition).toBe("fade_out_in");
+    expect(d.event.settings.defaultTransition).toBe("fade_out_in");
+  });
+
+  it("parses a v1 file without transition fields", () => {
+    const { data } = source();
+    const old = JSON.parse(JSON.stringify(data));
+    delete old.settings.defaultTransition;
+    for (const c of old.cues) delete c.transition;
+    const parsed = parseExport(old);
+    expect(parsed.cues.every((c) => c.transition === null)).toBe(true);
+    expect(parsed.settings.defaultTransition).toBe("crossfade");
+    const db = createTestDb();
+    const { event } = importEvent(db, parsed);
+    expect(getEventDetail(db, event.id)!.cues[0].transition).toBeNull();
   });
 
   it("importEvent rolls back on failure", () => {

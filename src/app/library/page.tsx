@@ -1,4 +1,4 @@
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import type { SP } from "@/lib/page-props";
 import { requireUser } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
@@ -27,11 +27,10 @@ export default async function LibraryPage({ searchParams }: SP) {
   const usage = await libraryUsage(db);
 
   return (
-    <>
-      <AppHeader user={user} />
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
+    <AppShell user={user}>
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-xl font-semibold">Kho nhạc</h1>
+          <h1 className="text-2xl font-semibold">Kho nhạc</h1>
           <UsageBar musicBytes={usage.musicBytes} diskFreeBytes={usage.diskFreeBytes} />
         </div>
         <UploadDropzone folderId={typeof folderId === "string" ? folderId : null} />
@@ -39,7 +38,7 @@ export default async function LibraryPage({ searchParams }: SP) {
           <FolderTree folders={folders} selected={folderId} q={q} />
           <SongTable songs={songs} folders={folders} q={q} folderParam={folderParam} />
         </div>
-      </main>
-    </>
+      </div>
+    </AppShell>
   );
 }

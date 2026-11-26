@@ -2,15 +2,18 @@
  * Pure playback state machine (spec §6.5). `reduce` decides every fade and switch and emits
  * commands for the Web Audio driver (Task 7). Priority: no unintended silence, no abrupt cuts.
  */
-import type { Cue, EventSettings, ShowSnapshot, Song } from "@/lib/types";
+import type { Cue, EventSettings, ShowSnapshot, Song, Transition } from "@/lib/types";
 import { buildOrder, nextPosition } from "./background-order";
 
 export type Deck = "bg0" | "bg1" | "cue0" | "cue1";
-/** Driver contract: a new ramp on a deck cancels any pending `pauseAtEnd` and starts from the current gain; `master` is smoothed by the driver. */
+/**
+ * Driver contract: a new ramp on a deck cancels any pending `pauseAtEnd` and starts from the current gain; `master` is smoothed by the driver.
+ * A command with `delaySec` (present only when > 0) waits that long before running; any newer command on the same deck cancels it. A delayed command takes effect (including cancelling a pending `pauseAtEnd`) only when it runs.
+ */
 export type Command =
   | { type: "load"; deck: Deck; songId: string; atSec: number } // set src + seek; gain stays 0
-  | { type: "play"; deck: Deck }
-  | { type: "ramp"; deck: Deck; to: number; seconds: number; pauseAtEnd?: boolean }
+  | { type: "play"; deck: Deck; delaySec?: number }
+  | { type: "ramp"; deck: Deck; to: number; seconds: number; pauseAtEnd?: boolean; delaySec?: number }
   | { type: "master"; to: number };
 export type Mode = "idle" | "background" | "cue" | "silent";
 type BgDeck = "bg0" | "bg1";
@@ -19,7 +22,9 @@ export interface PlaybackState {
   mode: Mode; currentCueIndex: number | null; playedCueIds: string[];
   bg: { order: number[]; pos: number; activeDeck: BgDeck; started: boolean; crossfading: boolean;
         fadingDeck: BgDeck | null; resumeAtSec: number | null };
-  cue: { activeDeck: CueDeck; cueIndex: number | null; ending: boolean };
+  cue: { activeDeck: CueDeck; cueIndex: number | null; ending: boolean;
+         /** True while a fade_out_in cue's delayed start is pending (never sounded yet); cleared by its first CUE_TIME. Absent = false. */
+         waiting: boolean };
   master: number;
 }
 export type PlaybackEvent =
@@ -42,6 +47,11 @@ export function fadeOut(cue: Cue, s: EventSettings): number {
   return cue.fadeOutSec ?? s.cueFadeSec;
 }
 
+/** Per-cue transition; the last fallback covers legacy snapshots without the field. */
+export function resolveTransition(cue: Cue, s: EventSettings): Transition {
+  return cue.transition ?? s.defaultTransition ?? "crossfade";
+}
+
 export function initialState(snap: ShowSnapshot, rng: Rng = Math.random): PlaybackState {
   return {
     mode: "idle",
@@ -51,7 +61,7 @@ export function initialState(snap: ShowSnapshot, rng: Rng = Math.random): Playba
       order: buildOrder(snap.background.length, snap.settings.shuffle, rng),
       pos: 0, activeDeck: "bg0", started: false, crossfading: false, fadingDeck: null, resumeAtSec: null,
     },
-    cue: { activeDeck: "cue0", cueIndex: null, ending: false },
+    cue: { activeDeck: "cue0", cueIndex: null, ending: false, waiting: false },
     master: snap.settings.masterVolume,
   };
 }
@@ -60,9 +70,19 @@ export function initialState(snap: ShowSnapshot, rng: Rng = Math.random): Playba
 
 /** Every ramp lasts at least 0.1 s, so nothing is ever cut abruptly. */
 const dur = (x: number) => Math.max(0.1, x);
-const ramp = (deck: Deck, to: number, seconds: number, pauseAtEnd = false): Command =>
-  pauseAtEnd ? { type: "ramp", deck, to, seconds: dur(seconds), pauseAtEnd }
-    : { type: "ramp", deck, to, seconds: dur(seconds) };
+const ramp = (deck: Deck, to: number, seconds: number, pauseAtEnd = false, delaySec = 0): Command => {
+  const c: Command = { type: "ramp", deck, to, seconds: dur(seconds) };
+  if (pauseAtEnd) c.pauseAtEnd = true;
+  if (delaySec > 0) c.delaySec = delaySec;
+  return c;
+};
+const play = (deck: Deck, delaySec = 0): Command =>
+  delaySec > 0 ? { type: "play", deck, delaySec } : { type: "play", deck };
+/** Seconds of the first emitted ramp (the outgoing fade), or 0 when nothing was faded. */
+const outgoingDelay = (cmds: Command[]): number => {
+  const r = cmds.find((c) => c.type === "ramp");
+  return r && r.type === "ramp" ? r.seconds : 0;
+};
 const otherBg = (d: BgDeck): BgDeck => (d === "bg0" ? "bg1" : "bg0");
 const otherCue = (d: CueDeck): CueDeck => (d === "cue0" ? "cue1" : "cue0");
 const noop = (state: PlaybackState): Result => ({ state, commands: [] });
@@ -92,35 +112,39 @@ function endCue(state: PlaybackState, snap: ShowSnapshot): Result & { fade: numb
   if (!cue) return { state, commands: [], fade: null };
   const fade = fadeOut(cue, snap.settings);
   return {
-    state: { ...state, cue: { ...state.cue, ending: true } },
+    state: { ...state, cue: { ...state.cue, ending: true, waiting: false } },
     commands: [ramp(state.cue.activeDeck, 0, fade, true)],
     fade,
   };
 }
 
 /** Bring the background up over `seconds`; empty playlist → silent. Caller ensures mode ≠ background. */
-function resumeBg(state: PlaybackState, snap: ShowSnapshot, seconds: number): Result {
+function resumeBg(state: PlaybackState, snap: ShowSnapshot, seconds: number, delaySec = 0): Result {
   const { bg } = state;
   if (snap.background.length === 0 || bg.order.length === 0) {
     return { state: { ...state, mode: "silent" }, commands: [] };
   }
   const deck = bg.activeDeck;
-  const target = ramp(deck, snap.settings.bgVolume, seconds);
+  const target = ramp(deck, snap.settings.bgVolume, seconds, false, delaySec);
   if (bg.started) {
-    return { state: { ...state, mode: "background" }, commands: [{ type: "play", deck }, target] };
+    return { state: { ...state, mode: "background" }, commands: [play(deck, delaySec), target] };
   }
   const songId = snap.background[bg.order[bg.pos]];
   return {
     state: { ...state, mode: "background", bg: { ...bg, started: true, resumeAtSec: null } },
-    commands: [{ type: "load", deck, songId, atSec: bg.resumeAtSec ?? 0 }, { type: "play", deck }, target],
+    commands: [{ type: "load", deck, songId, atSec: bg.resumeAtSec ?? 0 }, play(deck, delaySec), target],
   };
 }
 
 /** Leave whatever is playing and go to the background (BACK_TO_BACKGROUND, cue end, bg-kind cue). */
 function toBackground(state: PlaybackState, snap: ShowSnapshot): Result {
   if (state.mode === "background") return noop(state);
+  const playing = playingCue(state, snap);
   const ended = endCue(state, snap);
-  const resumed = resumeBg(ended.state, snap, ended.fade ?? snap.settings.cueFadeSec);
+  // A cue still waiting for its delayed start never sounded: nothing to wait for.
+  const delay = playing && !state.cue.waiting && ended.fade !== null && resolveTransition(playing, snap.settings) === "fade_out_in"
+    ? dur(ended.fade) : 0;
+  const resumed = resumeBg(ended.state, snap, ended.fade ?? snap.settings.cueFadeSec, delay);
   return { state: resumed.state, commands: [...ended.commands, ...resumed.commands] };
 }
 
@@ -155,6 +179,7 @@ function goCue(state: PlaybackState, index: number, snap: ShowSnapshot): Result 
 
   const commands: Command[] = [];
   let s = state;
+  const wasWaiting = state.cue.waiting === true;
   if (s.mode === "background") {
     const out = fadeOutBg(s, fadeIn(cue, snap.settings));
     s = out.state;
@@ -166,13 +191,15 @@ function goCue(state: PlaybackState, index: number, snap: ShowSnapshot): Result 
   }
   // First cue ever uses the initial deck; afterwards always alternate so a fading cue is never cut.
   const deck = s.cue.cueIndex === null ? s.cue.activeDeck : otherCue(s.cue.activeDeck);
+  const delay = resolveTransition(cue, snap.settings) === "fade_out_in" && !wasWaiting
+    ? outgoingDelay(commands) : 0;
   commands.push(
     { type: "load", deck, songId: song.id, atSec: cue.startSec },
-    { type: "play", deck },
-    ramp(deck, cue.volume / 100, fadeIn(cue, snap.settings)),
+    play(deck, delay),
+    ramp(deck, cue.volume / 100, fadeIn(cue, snap.settings), false, delay),
   );
   s = markCue(s, index, cue.id);
-  return { state: { ...s, mode: "cue", cue: { activeDeck: deck, cueIndex: index, ending: false } }, commands };
+  return { state: { ...s, mode: "cue", cue: { activeDeck: deck, cueIndex: index, ending: false, waiting: delay > 0 } }, commands };
 }
 
 function finishCue(state: PlaybackState, snap: ShowSnapshot): Result {
@@ -185,10 +212,12 @@ function finishCue(state: PlaybackState, snap: ShowSnapshot): Result {
 
 function onCueTime(state: PlaybackState, deck: Deck, t: number, snap: ShowSnapshot): Result {
   if (deck !== state.cue.activeDeck) return noop(state);
+  // First time update from the active deck: it is really playing now.
+  if (state.cue.waiting) state = { ...state, cue: { ...state.cue, waiting: false } };
   const cue = playingCue(state, snap);
   const song = cue?.songId ? snap.songs[cue.songId] : undefined;
-  if (!cue || !song) return noop(state);
-  if (t < effectiveEnd(cue, song) - fadeOut(cue, snap.settings)) return noop(state);
+  if (!cue || !song) return { state, commands: [] };
+  if (t < effectiveEnd(cue, song) - fadeOut(cue, snap.settings)) return { state, commands: [] };
   return finishCue(state, snap);
 }
 
@@ -238,7 +267,7 @@ function fadeStop(state: PlaybackState, snap: ShowSnapshot): Result {
     state: {
       ...state, mode: "silent",
       bg: { ...bg, crossfading: false, fadingDeck: null },
-      cue: { ...cue, ending: cue.cueIndex !== null ? true : cue.ending },
+      cue: { ...cue, ending: cue.cueIndex !== null ? true : cue.ending, waiting: false },
     },
     commands,
   };

@@ -9,15 +9,15 @@ const song = (id: string): Song => ({
 });
 const cue = (id: string, position: number, songId: string | null): Cue => ({
   id, position, kind: songId ? "song" : "background", name: id, songId, startSec: 0, endSec: null,
-  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "stop", note: "",
+  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "stop", note: "", transition: null,
 });
 
 describe("buildSnapshot", () => {
   it("includes only referenced songs and keeps cue order", () => {
     const detail: EventDetail = {
-      event: { id: "e1", name: "Tiệc", eventDate: null, settings: DEFAULT_SETTINGS, updatedAt: "x" },
+      event: { id: "e1", name: "Tiệc", eventDate: null, settings: { ...DEFAULT_SETTINGS, defaultTransition: "fade_out_in" }, updatedAt: "x" },
       background: [{ id: "b1", songId: "s2" }, { id: "b2", songId: "s1" }],
-      cues: [cue("c1", 0, null), cue("c2", 1, "s3")],
+      cues: [cue("c1", 0, null), { ...cue("c2", 1, "s3"), transition: "fade_out_in" }],
       songs: { s1: song("s1"), s2: song("s2"), s3: song("s3"), unused: song("unused") },
     };
     const now = new Date("2026-11-26T10:00:00Z");
@@ -29,6 +29,7 @@ describe("buildSnapshot", () => {
     expect(snap.background).toEqual(["s2", "s1"]);
     expect(snap.cues.map((c) => c.id)).toEqual(["c1", "c2"]);
     expect(Object.keys(snap.songs).sort()).toEqual(["s1", "s2", "s3"]);
-    expect(snap.settings).toEqual(DEFAULT_SETTINGS);
+    expect(snap.settings.defaultTransition).toBe("fade_out_in");
+    expect(snap.cues.map((c) => c.transition)).toEqual([null, "fade_out_in"]);
   });
 });

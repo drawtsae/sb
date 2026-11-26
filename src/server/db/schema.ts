@@ -110,6 +110,7 @@ export const cues = sqliteTable(
       .notNull()
       .default("resume_background"),
     note: text().notNull().default(""),
+    transition: text({ enum: ["crossfade", "fade_out_in"] }),
   },
   (t) => [
     check("cues_volume_check", sql`${t.volume} BETWEEN 0 AND 100`),
@@ -118,5 +119,6 @@ export const cues = sqliteTable(
     check("cues_song_id_check", sql`${t.kind} <> 'song' OR ${t.songId} IS NOT NULL`),
     check("cues_end_after_start_check", sql`${t.endSec} IS NULL OR ${t.endSec} > ${t.startSec}`),
     check("cues_start_check", sql`${t.startSec} >= 0`),
+    check("cues_transition_check", sql`${t.transition} IS NULL OR ${t.transition} IN ('crossfade','fade_out_in')`),
   ],
 );

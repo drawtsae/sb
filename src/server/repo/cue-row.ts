@@ -18,6 +18,7 @@ export function rowToCue(row: CueRow): Cue {
     volume: row.volume,
     onEnd: row.onEnd,
     note: row.note,
+    transition: row.transition,
   };
 }
 
@@ -37,5 +38,6 @@ export function cueToRow(eventId: string, cue: Cue): CueRow {
     volume: cue.volume,
     onEnd: cue.onEnd,
     note: cue.note,
+    transition: cue.transition,
   };
 }

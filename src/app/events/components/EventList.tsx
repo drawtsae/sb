@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Plus, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
@@ -99,8 +100,8 @@ export function EventList({ events }: { events: EventRecord[] }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Chương trình</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Chương trình</h1>
         <div className="flex items-center gap-2">
           <input
             ref={fileRef}
@@ -111,6 +112,7 @@ export function EventList({ events }: { events: EventRecord[] }) {
             onChange={(e) => void onFile(e.target.files?.[0])}
           />
           <Button variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <Upload data-icon="inline-start" />
             Nhập JSON
           </Button>
           <Button
@@ -119,6 +121,7 @@ export function EventList({ events }: { events: EventRecord[] }) {
               setDlg({ kind: "create" });
             }}
           >
+            <Plus data-icon="inline-start" />
             Tạo chương trình
           </Button>
         </div>
@@ -126,21 +129,21 @@ export function EventList({ events }: { events: EventRecord[] }) {
 
       {importError ? <p className="text-sm text-destructive">{importError}</p> : null}
       {importedId ? (
-        <div className="rounded-lg border p-3 text-sm" data-testid="import-missing">
+        <div className="rounded-2xl border border-border bg-card p-4 text-sm" data-testid="import-missing">
           <p className="font-medium">Thiếu bài trong kho:</p>
           <ul className="list-disc pl-5">
             {missing.map((m) => (
               <li key={m.contentHash}>{m.title}</li>
             ))}
           </ul>
-          <Link href={`/events/${importedId}`} className="mt-2 inline-block underline">
+          <Link href={`/events/${importedId}`} className="mt-2 inline-flex h-11 items-center text-primary underline underline-offset-2 hover:text-primary/80">
             Mở chương trình đã nhập
           </Link>
         </div>
       ) : null}
 
       {events.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Chưa có chương trình nào</p>
+        <p className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">Chưa có chương trình nào</p>
       ) : null}
 
       <ul className="flex flex-col gap-2">
@@ -148,10 +151,10 @@ export function EventList({ events }: { events: EventRecord[] }) {
           <li
             key={ev.id}
             data-testid="event-row"
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card p-4 transition-colors duration-150 hover:bg-surface-2"
           >
             <div className="flex flex-col">
-              <Link href={`/events/${ev.id}`} className="font-medium underline-offset-2 hover:underline">
+              <Link href={`/events/${ev.id}`} className="inline-flex min-h-11 items-center font-medium underline-offset-2 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 outline-none rounded-[10px]">
                 {ev.name}
               </Link>
               <span className="text-xs text-muted-foreground">Cập nhật {fmt.format(new Date(ev.updatedAt))}</span>
@@ -159,14 +162,14 @@ export function EventList({ events }: { events: EventRecord[] }) {
             <div className="flex flex-wrap items-center gap-1">
               <Link
                 href={`/events/${ev.id}/load`}
-                className="rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline"
+                className="rounded-[10px] px-2 text-sm text-foreground underline-offset-2 transition-colors duration-150 hover:bg-surface-2 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 outline-none inline-flex h-11 items-center"
               >
                 Kiểm tra &amp; nạp
               </Link>
               <a
                 href={`/api/events/${ev.id}/export`}
                 download
-                className="rounded-md px-2 py-1 text-sm underline-offset-2 hover:underline"
+                className="rounded-[10px] px-2 text-sm text-foreground underline-offset-2 transition-colors duration-150 hover:bg-surface-2 hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 outline-none inline-flex h-11 items-center"
               >
                 Xuất JSON
               </a>
@@ -215,7 +218,7 @@ export function EventList({ events }: { events: EventRecord[] }) {
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1.5"
+                className="h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}

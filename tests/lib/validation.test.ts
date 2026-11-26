@@ -6,7 +6,7 @@ import { cueSchema, parseSettings } from "@/lib/validation";
 const cue = (o: Partial<Cue> = {}): Cue => ({
   id: "c1", position: 0, kind: "song", name: "Entrance", songId: "s1",
   startSec: 0, endSec: null, fadeInSec: null, fadeOutSec: null,
-  volume: 80, onEnd: "stop", note: "", ...o,
+  volume: 80, onEnd: "stop", note: "", transition: null, ...o,
 });
 
 describe("parseSettings", () => {
@@ -32,6 +32,22 @@ describe("parseSettings", () => {
     const s = parseSettings({ bgVolume: 0, masterVolume: 1, cueFadeSec: 0.1, bgCrossfadeSec: 30 });
     expect(s).toMatchObject({ bgVolume: 0, masterVolume: 1, cueFadeSec: 0.1, bgCrossfadeSec: 30 });
   });
+});
+
+describe("transition", () => {
+  it("defaults settings to crossfade", () => expect(parseSettings({}).defaultTransition).toBe("crossfade"));
+  it("falls back on an invalid default transition", () =>
+    expect(parseSettings({ defaultTransition: "instant" }).defaultTransition).toBe("crossfade"));
+  it("accepts fade_out_in", () =>
+    expect(parseSettings({ defaultTransition: "fade_out_in" }).defaultTransition).toBe("fade_out_in"));
+  it("defaults a cue transition to null", () => {
+    const { transition: _t, ...rest } = cue();
+    void _t;
+    const r = cueSchema.parse(rest);
+    expect(r.transition).toBeNull();
+  });
+  it("rejects an unknown cue transition", () =>
+    expect(cueSchema.safeParse({ ...cue(), transition: "instant" }).success).toBe(false));
 });
 
 describe("cueSchema", () => {

@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Button } from "@/components/ui/button";
+import { History, LogOut, Play, TriangleAlert, VolumeX } from "lucide-react";
+import { OfflineStatus } from "@/components/offline-status";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Modal } from "@/app/library/components/Modal";
 import { clearLive, readLive, restoreState, type LivePersisted } from "@/lib/offline/live-persist";
 import { readSnapshot, SNAPSHOT_KEY } from "@/lib/offline/snapshot";
 import { initialState, type PlaybackEvent, type PlaybackState } from "@/lib/playback/machine";
 import type { ShowSnapshot } from "@/lib/types";
 import { BackgroundPanel } from "./components/BackgroundPanel";
-import { ControlBar } from "./components/ControlBar";
-import { CueColumn } from "./components/CueColumn";
+import { bigButton, ControlBar, MasterVolume, NextCue } from "./components/ControlBar";
+import { CueColumn, CueNotes } from "./components/CueColumn";
 import { NowPlaying } from "./components/NowPlaying";
 import { createActionGuard } from "./components/action-guard";
 import { nextCueIndex, type Sample } from "./components/live-view";
@@ -99,31 +102,36 @@ function ResumePrompt({
 }: { snap: ShowSnapshot; saved: LivePersisted; onResume(): void; onRestart(): void }) {
   const cue = saved.currentCueIndex !== null ? snap.cues[saved.currentCueIndex] : undefined;
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 bg-black p-6 text-center text-white">
-      <h1 className="text-2xl font-semibold">{snap.eventName}</h1>
-      <div className="flex max-w-xl flex-col gap-2">
-        <p className="text-3xl font-bold">Có phiên Live đang dở</p>
-        <p className="text-lg text-white/75">
-          Lưu lúc {stamp(saved.savedAt)}
-          {cue ? ` · tiết mục: ${cue.name}` : ""} · đã phát {saved.playedCueIds.length} tiết mục
-        </p>
-        <p className="text-lg text-white/75">Tiếp tục sẽ không tự phát nhạc.</p>
-      </div>
-      <div className="flex flex-wrap justify-center gap-4">
-        <button
-          type="button"
-          onClick={onResume}
-          className="min-h-16 rounded-xl bg-emerald-500 px-8 text-2xl font-bold text-black hover:bg-emerald-400"
-        >
-          Tiếp tục từ chỗ cũ
-        </button>
-        <button
-          type="button"
-          onClick={onRestart}
-          className="min-h-16 rounded-xl border border-white/40 px-8 text-2xl font-semibold hover:bg-white/10"
-        >
-          Bắt đầu lại
-        </button>
+    <main className="flex flex-1 flex-col items-center justify-center bg-background p-6 text-center text-foreground">
+      <div className="flex w-full max-w-2xl flex-col items-center gap-6 rounded-2xl border border-border bg-card p-8 shadow-sm">
+        <h1 className="text-2xl font-semibold text-muted-foreground">{snap.eventName}</h1>
+        <div className="flex flex-col gap-2">
+          <p className="flex items-center justify-center gap-3 text-3xl font-bold">
+            <History aria-hidden="true" className="size-8 text-gold" />
+            Có phiên Live đang dở
+          </p>
+          <p className="text-lg text-muted-foreground tabular-nums">
+            Lưu lúc {stamp(saved.savedAt)}
+            {cue ? ` · tiết mục: ${cue.name}` : ""} · đã phát {saved.playedCueIds.length} tiết mục
+          </p>
+          <p className="text-lg text-muted-foreground">Tiếp tục sẽ không tự phát nhạc.</p>
+        </div>
+        <div className="flex w-full flex-wrap justify-center gap-4">
+          <button
+            type="button"
+            onClick={onResume}
+            className={cn(buttonVariants(), bigButton, "w-auto px-8 text-2xl")}
+          >
+            Tiếp tục từ chỗ cũ
+          </button>
+          <button
+            type="button"
+            onClick={onRestart}
+            className={cn(buttonVariants({ variant: "outline" }), bigButton, "w-auto px-8 text-2xl font-semibold")}
+          >
+            Bắt đầu lại
+          </button>
+        </div>
       </div>
     </main>
   );
@@ -217,53 +225,74 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
 
   const nextIndex = nextCueIndex(state, snap);
   return (
-    <main className="flex flex-1 flex-col gap-3 bg-black p-3 text-white md:p-4">
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <h1 className="text-xl font-semibold">{snap.eventName}</h1>
-          <span className="text-sm text-white/60">Nạp lúc {stamp(snap.takenAt)}</span>
+    <div className="flex flex-1 flex-col gap-4 bg-background p-3 text-foreground md:p-4">
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-border bg-card px-4 py-2 shadow-sm">
+        <span className="inline-flex items-center gap-2 rounded-full bg-success px-3 py-1 text-sm font-bold tracking-widest text-background">
+          <span aria-hidden="true" className="size-2 rounded-full bg-background" />
+          LIVE
+        </span>
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3">
+          <h1 className="truncate text-xl font-semibold">{snap.eventName}</h1>
+          <span className="text-sm text-muted-foreground tabular-nums">Nạp lúc {stamp(snap.takenAt)}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setConfirmExit(true)}
-          disabled={exiting}
-          className="rounded-lg border border-white/30 px-3 py-1.5 text-sm hover:bg-white/10 disabled:opacity-40"
-        >
-          Thoát chế độ Live
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+          <MasterVolume value={state.master} disabled={controlsOff} onChange={setMaster} />
+          <OfflineStatus />
+          <button
+            type="button"
+            onClick={() => setConfirmExit(true)}
+            disabled={exiting}
+            className={cn(buttonVariants({ variant: "outline" }), "px-4")}
+          >
+            <LogOut aria-hidden="true" />
+            Thoát
+          </button>
+        </div>
       </header>
 
-      {started && audioSuspended ? (
-        <button
-          type="button"
-          onClick={resumeAudio}
-          className="rounded-xl border-2 border-amber-300 bg-amber-500 px-4 py-3 text-2xl font-bold text-black hover:bg-amber-400"
-        >
-          Âm thanh bị tạm dừng bởi trình duyệt — bấm vào đây để bật lại
-        </button>
-      ) : null}
+      <main className="flex flex-1 flex-col gap-4">
+        {started && audioSuspended ? (
+          <button
+            type="button"
+            onClick={resumeAudio}
+            className={cn(
+              buttonVariants(),
+              bigButton,
+              "border-2 border-gold bg-gold text-2xl text-gold-foreground hover:bg-gold/85 focus-visible:ring-gold/60",
+            )}
+          >
+            <TriangleAlert aria-hidden="true" />
+            Âm thanh bị tạm dừng bởi trình duyệt — bấm vào đây để bật lại
+          </button>
+        ) : null}
 
-      <NowPlaying snap={snap} state={state} sample={sample} />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_2fr]">
+          <NowPlaying snap={snap} state={state} sample={sample} />
+          <NextCue snap={snap} index={nextIndex} disabled={controlsOff} onNext={next} />
+        </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
-        <CueColumn
-          snap={snap}
-          state={state}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[3fr_2fr]">
+          <CueColumn
+            snap={snap}
+            state={state}
+            disabled={controlsOff}
+            onGo={(i) => act(`cue:${i}`, { type: "GO_CUE", index: i })}
+          />
+          <div className="flex flex-col gap-4">
+            <BackgroundPanel snap={snap} state={state} sample={sample} />
+            <CueNotes snap={snap} state={state} />
+          </div>
+        </div>
+
+        <ControlBar
+          settings={snap.settings}
+          mode={state.mode}
+          hasBackground={snap.background.length > 0}
           disabled={controlsOff}
-          onGo={(i) => act(`cue:${i}`, { type: "GO_CUE", index: i })}
+          onBackground={background}
+          onFadeStop={fadeStop}
         />
-        <BackgroundPanel snap={snap} state={state} sample={sample} disabled={controlsOff} onMaster={setMaster} />
-      </div>
-
-      <ControlBar
-        nextCue={nextIndex !== null ? snap.cues[nextIndex] : null}
-        mode={state.mode}
-        hasBackground={snap.background.length > 0}
-        disabled={controlsOff}
-        onNext={next}
-        onBackground={background}
-        onFadeStop={fadeStop}
-      />
+      </main>
 
       {/* The driver's <audio data-deck> elements are attached here. */}
       <div ref={decksRef} hidden data-testid="audio-decks" />
@@ -271,7 +300,11 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
       {!started ? <StartOverlay snap={snap} ready={ready} error={error} onStart={() => void start()} /> : null}
 
       {exiting ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 text-3xl font-bold">
+        <div
+          role="status"
+          className="fixed inset-0 z-50 flex items-center justify-center gap-3 bg-background/90 text-3xl font-bold"
+        >
+          <VolumeX aria-hidden="true" className="size-8 text-muted-foreground" />
           Đang fade out…
         </div>
       ) : null}
@@ -289,7 +322,7 @@ function LiveController({ snap, initial }: { snap: ShowSnapshot; initial: Playba
           </div>
         </Modal>
       ) : null}
-    </main>
+    </div>
   );
 }
 
@@ -298,17 +331,19 @@ function StartOverlay({
   snap, ready, error, onStart,
 }: { snap: ShowSnapshot; ready: boolean; error: string | null; onStart(): void }) {
   return (
-    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 text-center text-white">
+    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-background/95 p-6 text-center text-foreground">
+      <p className="text-xl font-semibold text-muted-foreground">{snap.eventName}</p>
       {error ? (
-        <>
-          <p role="alert" className="max-w-xl text-3xl font-bold text-red-300">
+        <div className="flex max-w-2xl flex-col items-center gap-5 rounded-2xl border-2 border-destructive bg-destructive-surface p-8">
+          <p role="alert" className="flex items-center gap-3 text-3xl font-bold text-destructive">
+            <TriangleAlert aria-hidden="true" className="size-9 shrink-0" />
             {error}
           </p>
           {error === AUDIO_FAILED ? (
             <button
               type="button"
               onClick={onStart}
-              className="min-h-16 rounded-xl bg-emerald-500 px-8 text-2xl font-bold text-black hover:bg-emerald-400"
+              className={cn(buttonVariants(), bigButton, "w-auto px-8 text-2xl")}
             >
               Thử lại
             </button>
@@ -317,19 +352,23 @@ function StartOverlay({
             <Link
               href={`/events/${snap.eventId}/load`}
               prefetch={false}
-              className="text-xl text-white underline underline-offset-4"
+              className="inline-flex min-h-11 items-center rounded-[10px] px-2 text-xl text-foreground underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               Kiểm tra &amp; nạp
             </Link>
           ) : null}
-        </>
+        </div>
       ) : (
         <button
           type="button"
           disabled={!ready}
           onClick={onStart}
-          className="min-h-32 rounded-2xl bg-emerald-500 px-10 text-4xl font-black text-black hover:bg-emerald-400 disabled:opacity-50"
+          className={cn(
+            buttonVariants(),
+            "h-auto min-h-32 gap-4 rounded-2xl px-10 text-4xl font-bold whitespace-normal shadow-sm [&_svg:not([class*='size-'])]:size-10",
+          )}
         >
+          <Play aria-hidden="true" className="fill-current" />
           {ready ? "Bấm để bắt đầu điều khiển" : "Đang chuẩn bị nhạc…"}
         </button>
       )}

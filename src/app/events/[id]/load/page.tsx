@@ -1,4 +1,4 @@
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/server/auth/require";
 import { LoadClient } from "./LoadClient";
 
@@ -8,11 +8,10 @@ export default async function LoadPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const user = await requireUser(`/events/${id}/load`);
   return (
-    <>
-      <AppHeader user={user} />
-      <main className="mx-auto max-w-3xl p-6">
+    <AppShell user={user}>
+      <div className="mx-auto max-w-3xl p-6">
         <LoadClient eventId={id} />
-      </main>
-    </>
+      </div>
+    </AppShell>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,7 @@ export function UploadDropzone({ folderId }: { folderId: string | null }) {
 
   return (
     <div
-      className={`rounded-lg border border-dashed p-3 ${over ? "border-primary bg-muted/40" : ""}`}
+      className={`rounded-2xl border border-dashed border-border bg-card p-4 transition-colors duration-150 ${over ? "border-primary bg-surface-2" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
@@ -124,7 +125,10 @@ export function UploadDropzone({ folderId }: { folderId: string | null }) {
       }}
     >
       <div className="flex items-center gap-3">
-        <Button onClick={() => input.current?.click()}>Tải nhạc lên</Button>
+        <Button onClick={() => input.current?.click()}>
+          <Upload data-icon="inline-start" />
+          Tải nhạc lên
+        </Button>
         <span className="text-sm text-muted-foreground">hoặc kéo thả file / thư mục vào đây</span>
         <input
           ref={input}
@@ -158,7 +162,7 @@ export function UploadDropzone({ folderId }: { folderId: string | null }) {
                 </>
               ) : (
                 <>
-                  <progress className="w-40" max={1} value={it.status === "uploading" ? it.progress : 0} />
+                  <progress className="w-40 accent-primary" max={1} value={it.status === "uploading" ? it.progress : 0} />
                   <span className="w-24 text-xs text-muted-foreground">
                     {it.status === "queued" ? "Đang chờ" : it.status === "hashing" ? "Đang kiểm tra" : `${Math.round(it.progress * 100)}%`}
                   </span>

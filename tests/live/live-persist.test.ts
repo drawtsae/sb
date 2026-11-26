@@ -75,7 +75,7 @@ describe("restoreState", () => {
     expect(s.bg).toEqual({
       order: [1, 0], pos: 1, activeDeck: "bg0", started: false, crossfading: false, fadingDeck: null, resumeAtSec: 42.5,
     });
-    expect(s.cue).toEqual({ activeDeck: "cue0", cueIndex: null, ending: false });
+    expect(s.cue).toEqual({ activeDeck: "cue0", cueIndex: null, ending: false, waiting: false });
     expect(s.master).toBe(SNAP.settings.masterVolume);
   });
 

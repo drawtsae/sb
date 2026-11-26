@@ -18,7 +18,7 @@ function song(id: string, durationSec: number): Song {
 function cue(partial: Partial<Cue> & Pick<Cue, "id" | "position" | "kind" | "name">): Cue {
   return {
     songId: null, startSec: 0, endSec: null, fadeInSec: null, fadeOutSec: null,
-    volume: 100, onEnd: "resume_background", note: "", ...partial,
+    volume: 100, onEnd: "resume_background", note: "", transition: null, ...partial,
   };
 }
 

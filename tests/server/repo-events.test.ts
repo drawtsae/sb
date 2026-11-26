@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
+import { sql } from "drizzle-orm";
 import { songs } from "@/server/db/schema";
 import type { Cue } from "@/lib/types";
 import {
@@ -56,7 +57,31 @@ const cue = (over: Partial<Cue> = {}): Cue => ({
   volume: 100,
   onEnd: "resume_background",
   note: "",
+  transition: null,
   ...over,
+});
+
+describe("cue transition", () => {
+  it("round-trips fade_out_in and null", () => {
+    const db = setup();
+    const ev = createEvent(db, "T");
+    upsertCue(db, ev.id, cue({ name: "A", transition: "fade_out_in" }));
+    upsertCue(db, ev.id, cue({ name: "B", transition: null }));
+    const d = getEventDetail(db, ev.id)!;
+    expect(d.cues.map((c) => c.transition)).toEqual(["fade_out_in", null]);
+  });
+  it("rejects an unknown transition at the CHECK constraint", () => {
+    const db = setup();
+    const ev = createEvent(db, "T");
+    upsertCue(db, ev.id, cue());
+    let code: unknown;
+    try {
+      db.run(sql`UPDATE cues SET transition = 'instant'`);
+    } catch (e) {
+      code = ((e as { cause?: { code?: string } }).cause ?? e as { code?: string }).code;
+    }
+    expect(code).toBe("SQLITE_CONSTRAINT_CHECK");
+  });
 });
 
 function populate(db: Db) {

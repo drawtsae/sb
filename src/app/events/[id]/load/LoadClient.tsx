@@ -1,5 +1,6 @@
 "use client";
 
+import { Play } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -133,13 +134,13 @@ export function LoadClient({ eventId }: { eventId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-3">
-          <Link href={`/events/${eventId}`} className="text-sm text-muted-foreground underline">
+          <Link href={`/events/${eventId}`} className="inline-flex h-11 items-center text-sm text-muted-foreground underline underline-offset-2 transition-colors duration-150 hover:text-foreground rounded-[10px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
             ← Quay lại chương trình
           </Link>
-          <h1 className="text-xl font-semibold">Kiểm tra &amp; nạp{snap ? `: ${snap.eventName}` : ""}</h1>
+          <h1 className="text-2xl font-semibold">Kiểm tra &amp; nạp{snap ? `: ${snap.eventName}` : ""}</h1>
         </div>
         {ok && saved && swControlled ? (
-          <span data-testid="offline-badge" className="rounded-full bg-green-600/20 px-3 py-1 text-sm text-green-600">
+          <span data-testid="offline-badge" className="rounded-full bg-success/15 px-3 py-1 text-sm text-success">
             Sẵn sàng offline
           </span>
         ) : null}
@@ -157,13 +158,13 @@ export function LoadClient({ eventId }: { eventId: string }) {
       )}
 
       {stale && !ok && !running ? (
-        <p role="status" data-testid="stale-warning" className="text-sm text-amber-500">
+        <p role="status" data-testid="stale-warning" className="text-sm text-gold">
           Trang Live vẫn đang giữ bản nạp cũ ({stale.eventName} lúc {stamp(stale.takenAt)}). Hãy sửa lỗi rồi nạp lại.
         </p>
       ) : null}
 
       {errorItems.length > 0 || cueErrors.length > 0 ? (
-        <ul data-testid="load-errors" className="flex flex-col gap-1 text-sm text-destructive">
+        <ul data-testid="load-errors" className="flex flex-col gap-1 rounded-2xl border border-destructive/40 bg-destructive-surface p-4 text-sm text-destructive">
           {errorItems.map((i) => (
             <li key={i.songId}>
               {i.title}: {i.reason}
@@ -178,14 +179,14 @@ export function LoadClient({ eventId }: { eventId: string }) {
       ) : null}
 
       {snap && emptyBackgroundWarning(snap) ? (
-        <p role="status" data-testid="empty-bg-warning" className="text-sm text-amber-500">
+        <p role="status" data-testid="empty-bg-warning" className="text-sm text-gold">
           {MSG_EMPTY_BACKGROUND}
         </p>
       ) : null}
 
-      <ul className="flex flex-col gap-1 text-sm">
+      <ul className="flex flex-col rounded-2xl border border-border bg-card px-4 py-2 text-sm empty:hidden">
         {items.map((i) => (
-          <li key={i.songId} className="flex justify-between gap-2 border-b py-1">
+          <li key={i.songId} className="flex justify-between gap-2 border-b border-border py-2 transition-colors duration-150 last:border-b-0 hover:bg-surface-2">
             <span className="truncate">{i.title}</span>
             <span className="text-muted-foreground">
               {{ pending: "Chờ", downloading: "Đang tải…", ok: "Đạt", error: "Lỗi" }[i.status]}
@@ -195,7 +196,7 @@ export function LoadClient({ eventId }: { eventId: string }) {
       </ul>
 
       {ok && saved && snap ? (
-        <section data-testid="load-summary" aria-labelledby="summary-h" className="flex flex-col gap-2 rounded-xl border p-3">
+        <section data-testid="load-summary" aria-labelledby="summary-h" className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5">
           <h2 id="summary-h" className="text-base font-semibold">
             Kịch bản đã nạp (Live sẽ phát đúng như sau)
           </h2>
@@ -217,7 +218,7 @@ export function LoadClient({ eventId }: { eventId: string }) {
                 </thead>
                 <tbody>
                   {summaryRows(snap).map((r) => (
-                    <tr key={r.position} data-testid="summary-row" className="border-t">
+                    <tr key={r.position} data-testid="summary-row" className="border-t border-border transition-colors duration-150 hover:bg-surface-2">
                       <td className="pr-2">{r.position}</td>
                       <td className="pr-2">{r.name}</td>
                       <td className="pr-2">{r.kind}</td>
@@ -249,7 +250,13 @@ export function LoadClient({ eventId }: { eventId: string }) {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={!canStart} onClick={openLive}>
+        <Button
+          type="button"
+          disabled={!canStart}
+          onClick={openLive}
+          className="bg-gold text-gold-foreground hover:bg-gold/85"
+        >
+          <Play data-icon="inline-start" />
           Bắt đầu tiệc
         </Button>
         <Button type="button" variant="outline" disabled={!ok} onClick={() => setOfflineHelp(true)}>

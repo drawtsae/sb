@@ -1,5 +1,6 @@
 "use client";
 
+import { GripVertical } from "lucide-react";
 import {
   closestCenter,
   DndContext,
@@ -41,25 +42,36 @@ function Row({
   move: (delta: -1 | 1) => void;
   children: (ctx: RowCtx) => ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
   const handle = (
     <button
       type="button"
       ref={setActivatorNodeRef}
       aria-label="Kéo để sắp xếp"
       title="Kéo để sắp xếp"
-      className="cursor-grab touch-none rounded px-1 text-muted-foreground hover:bg-muted"
+      className="flex size-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-[10px] text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       {...attributes}
       {...listeners}
     >
-      ⠿
+      <GripVertical aria-hidden className="size-5" />
     </button>
   );
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 }}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+      }}
     >
       {children({ index, count, handle, move })}
     </div>
@@ -82,7 +94,9 @@ export function SortableList<T>({
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
   const keys = items.map(getKey);
 
@@ -93,14 +107,28 @@ export function SortableList<T>({
 
   function onDragEnd(e: DragEndEvent) {
     if (!e.over || e.active.id === e.over.id) return;
-    reorderTo(keys.indexOf(String(e.active.id)), keys.indexOf(String(e.over.id)));
+    reorderTo(
+      keys.indexOf(String(e.active.id)),
+      keys.indexOf(String(e.over.id)),
+    );
   }
 
   return (
-    <DndContext id={id} sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndContext
+      id={id}
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
       <SortableContext items={keys} strategy={verticalListSortingStrategy}>
         {items.map((item, i) => (
-          <Row key={keys[i]} id={keys[i]} index={i} count={keys.length} move={(d) => reorderTo(i, i + d)}>
+          <Row
+            key={keys[i]}
+            id={keys[i]}
+            index={i}
+            count={keys.length}
+            move={(d) => reorderTo(i, i + d)}
+          >
             {(ctx) => children(item, ctx)}
           </Row>
         ))}

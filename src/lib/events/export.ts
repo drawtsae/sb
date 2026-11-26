@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { settingsSchema } from "@/lib/validation";
+import { settingsSchema, transitionSchema } from "@/lib/validation";
 import type { Cue, EventDetail, EventSettings } from "@/lib/types";
 
 export interface EventExportV1 {
@@ -27,13 +27,14 @@ const cueExportSchema = z.object({
   volume: z.number().int().min(0).max(100),
   onEnd: z.enum(["resume_background", "stop"]),
   note: z.string(),
+  transition: transitionSchema.nullable().default(null),
 });
 
 const exportSchema = z
   .object({
     version: z.literal(1),
     name: z.string().trim().min(1),
-    settings: settingsSchema,
+    settings: settingsSchema.extend({ defaultTransition: transitionSchema.default("crossfade") }),
     songs: z.array(z.object({ ref: z.string(), title: z.string(), contentHash: z.string() })),
     background: z.array(z.string()),
     cues: z.array(cueExportSchema),

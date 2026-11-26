@@ -3,6 +3,8 @@ import { DEFAULT_SETTINGS, type EventSettings } from "./types";
 
 const fade = z.number().min(0.1).max(30);
 
+export const transitionSchema = z.enum(["crossfade", "fade_out_in"]);
+
 export const cueSchema = z
   .object({
     id: z.string(),
@@ -17,6 +19,7 @@ export const cueSchema = z
     volume: z.number().int().min(0).max(100),
     onEnd: z.enum(["resume_background", "stop"]),
     note: z.string(),
+    transition: transitionSchema.nullable().default(null),
   })
   .superRefine((c, ctx) => {
     if (c.kind === "song" && c.songId == null) {
@@ -34,6 +37,7 @@ export const settingsSchema = z.object({
   bgVolume: z.number().min(0).max(1),
   masterVolume: z.number().min(0).max(1),
   shuffle: z.boolean(),
+  defaultTransition: transitionSchema,
 });
 
 /** Accepts an object or JSON string; invalid values fall back per key to defaults. */

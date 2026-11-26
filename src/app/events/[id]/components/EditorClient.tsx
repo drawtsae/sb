@@ -22,9 +22,12 @@ import type { SaveStatus } from "./useAutosave";
 
 const SONG_REQUIRED = "Tiết mục loại Bài riêng phải chọn bài hát";
 const UNSAVED_LOAD = "Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi nạp";
-const UNSAVED_LEAVE = "Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi rời trang";
+const UNSAVED_LEAVE =
+  "Còn thay đổi chưa lưu được — hãy sửa lỗi trước khi rời trang";
 
-function issueMessage(issues: { path: (string | number)[]; message: string }[] | undefined): string {
+function issueMessage(
+  issues: { path: (string | number)[]; message: string }[] | undefined,
+): string {
   const first = issues?.[0];
   switch (first?.path[0]) {
     case "songId":
@@ -48,7 +51,13 @@ function must<T>(r: ActionResult<T>): T {
 
 type StatusMap = Record<string, { status: SaveStatus; retry?: () => void }>;
 
-export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSongs: Song[] }) {
+export function EditorClient({
+  detail,
+  allSongs,
+}: {
+  detail: EventDetail;
+  allSongs: Song[];
+}) {
   const eventId = detail.event.id;
   const router = useRouter();
   const [songs] = useState(() => {
@@ -58,8 +67,12 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   });
 
   const [bg, setBg] = useState<BgTrack[]>(detail.background);
-  const [items, setItems] = useState<CueItem[]>(() => detail.cues.map((c) => ({ key: c.id, cue: c })));
-  const [settings, setSettings] = useState<EventSettings>(detail.event.settings);
+  const [items, setItems] = useState<CueItem[]>(() =>
+    detail.cues.map((c) => ({ key: c.id, cue: c })),
+  );
+  const [settings, setSettings] = useState<EventSettings>(
+    detail.event.settings,
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [statuses, setStatuses] = useState<StatusMap>({});
   const [leaving, setLeaving] = useState(false);
@@ -69,7 +82,9 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
-  const serverIds = useRef(new Map<string, string>(detail.cues.map((c) => [c.id, c.id])));
+  const serverIds = useRef(
+    new Map<string, string>(detail.cues.map((c) => [c.id, c.id])),
+  );
   const chains = useRef(new Map<string, Promise<void>>());
   const counter = useRef(0);
   const deletedKeys = useRef(new Set<string>());
@@ -80,27 +95,34 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   /** Autosave flushes of the cue editors and the settings panel, by status key. */
   const flushers = useRef(new Map<string, () => Promise<boolean>>());
 
-  const setStatus = useCallback((key: string, status: SaveStatus | null, retry?: () => void) => {
-    const prev = statusesRef.current;
-    let next = prev;
-    if (status === null) {
-      if (key in prev) {
-        next = { ...prev };
-        delete next[key];
+  const setStatus = useCallback(
+    (key: string, status: SaveStatus | null, retry?: () => void) => {
+      const prev = statusesRef.current;
+      let next = prev;
+      if (status === null) {
+        if (key in prev) {
+          next = { ...prev };
+          delete next[key];
+        }
+      } else {
+        const cur = prev[key];
+        if (!cur || cur.status !== status || cur.retry !== retry)
+          next = { ...prev, [key]: { status, retry } };
       }
-    } else {
-      const cur = prev[key];
-      if (!cur || cur.status !== status || cur.retry !== retry) next = { ...prev, [key]: { status, retry } };
-    }
-    if (next === prev) return;
-    statusesRef.current = next;
-    setStatuses(next);
-  }, []);
+      if (next === prev) return;
+      statusesRef.current = next;
+      setStatuses(next);
+    },
+    [],
+  );
 
-  const setFlusher = useCallback((key: string, flush: (() => Promise<boolean>) | null) => {
-    if (flush) flushers.current.set(key, flush);
-    else flushers.current.delete(key);
-  }, []);
+  const setFlusher = useCallback(
+    (key: string, flush: (() => Promise<boolean>) | null) => {
+      if (flush) flushers.current.set(key, flush);
+      else flushers.current.delete(key);
+    },
+    [],
+  );
 
   function setError(key: string, message: string | null) {
     setErrors((prev) => {
@@ -129,7 +151,9 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   }
 
   async function settled(): Promise<void> {
-    await Promise.all([...chains.current.values()].map((p) => p.catch(() => undefined)));
+    await Promise.all(
+      [...chains.current.values()].map((p) => p.catch(() => undefined)),
+    );
   }
 
   /** Push the local order of saved cues to the server. */
@@ -180,7 +204,11 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
     const key = `new-${++counter.current}`;
     const item: CueItem = { key, cue: { ...cue, id: key } };
     setItems((prev) => [...prev.slice(0, at), item, ...prev.slice(at)]);
-    itemsRef.current = [...itemsRef.current.slice(0, at), item, ...itemsRef.current.slice(at)];
+    itemsRef.current = [
+      ...itemsRef.current.slice(0, at),
+      item,
+      ...itemsRef.current.slice(at),
+    ];
     void track(`op:cue:${key}`, () => saveCue(key, item.cue));
   }
 
@@ -197,17 +225,25 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
     volume: 100,
     onEnd: "resume_background",
     note: "",
+    transition: null,
   });
 
   function patchCue(key: string, patch: Partial<Cue>) {
-    setItems((prev) => prev.map((i) => (i.key === key ? { ...i, cue: { ...i.cue, ...patch } } : i)));
+    setItems((prev) =>
+      prev.map((i) =>
+        i.key === key ? { ...i, cue: { ...i.cue, ...patch } } : i,
+      ),
+    );
   }
 
   function duplicateCue(key: string) {
     const at = items.findIndex((i) => i.key === key);
     if (at < 0) return;
     const src = items[at].cue;
-    insertCue({ ...src, name: src.name ? `${src.name} (bản sao)` : src.name }, at + 1);
+    insertCue(
+      { ...src, name: src.name ? `${src.name} (bản sao)` : src.name },
+      at + 1,
+    );
   }
 
   function deleteCue(key: string) {
@@ -282,10 +318,14 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   async function flushAll(): Promise<boolean> {
     // Let an edit committed by this same click (e.g. a field's blur) reach its autosave first.
     await new Promise((r) => setTimeout(r, 0));
-    const results = await Promise.all([...flushers.current.values()].map((f) => f()));
+    const results = await Promise.all(
+      [...flushers.current.values()].map((f) => f()),
+    );
     while (ops.current.size > 0) await Promise.all([...ops.current]);
     await settled();
-    const opError = Object.entries(statusesRef.current).some(([k, s]) => k.startsWith("op:") && s.status === "error");
+    const opError = Object.entries(statusesRef.current).some(
+      ([k, s]) => k.startsWith("op:") && s.status === "error",
+    );
     return results.every(Boolean) && !opError;
   }
 
@@ -302,24 +342,25 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             disabled={leaving}
             onClick={() => void leave("/events", UNSAVED_LEAVE)}
-            className="text-sm text-muted-foreground underline"
+            className="inline-flex min-h-11 items-center rounded-[10px] px-2 text-sm text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             ← Chương trình
           </button>
-          <h1 className="text-xl font-semibold">{detail.event.name}</h1>
+          <h1 className="text-2xl font-semibold text-foreground">
+            {detail.event.name}
+          </h1>
         </div>
         <div className="flex items-center gap-4">
           <SaveIndicator status={overall} onRetry={retryAll} />
           <Button
             type="button"
-            size="sm"
             variant="outline"
             disabled={leaving}
             onClick={() => void leave(`/events/${eventId}/load`, UNSAVED_LOAD)}
@@ -345,6 +386,7 @@ export function EditorClient({ detail, allSongs }: { detail: EventDetail; allSon
 
       <CueList
         items={items}
+        settings={settings}
         songsById={songs}
         allSongs={allSongs}
         errors={errors}

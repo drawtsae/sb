@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
 import { getEventDetail } from "@/server/repo/events";
@@ -16,11 +16,10 @@ export default async function EventEditorPage({ params }: { params: Promise<{ id
   if (!detail) notFound();
   const allSongs = listSongs(db);
   return (
-    <>
-      <AppHeader user={user} />
-      <main className="mx-auto max-w-5xl p-6">
+    <AppShell user={user}>
+      <div className="mx-auto max-w-5xl p-6">
         <EditorClient detail={detail} allSongs={allSongs} />
-      </main>
-    </>
+      </div>
+    </AppShell>
   );
 }

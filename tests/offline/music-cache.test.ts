@@ -30,7 +30,7 @@ const song = (id: string, over: Partial<Song> = {}): Song => ({
 });
 const cue = (id: string, songId: string | null, over: Partial<Cue> = {}): Cue => ({
   id, position: 0, kind: songId ? "song" : "background", name: `Cue ${id}`, songId, startSec: 0, endSec: null,
-  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "stop", note: "", ...over,
+  fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "stop", note: "", transition: null, ...over,
 });
 const snapOf = (songs: Song[], cues: Cue[]): ShowSnapshot => ({
   version: 1, eventId: "e", eventName: "E", takenAt: "t", settings: DEFAULT_SETTINGS,

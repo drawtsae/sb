@@ -1,4 +1,4 @@
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { requireUser } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
 import { listEvents } from "@/server/repo/events";
@@ -10,11 +10,10 @@ export default async function EventsPage() {
   const user = await requireUser("/events");
   const events = listEvents(getDb());
   return (
-    <>
-      <AppHeader user={user} />
-      <main className="mx-auto max-w-4xl p-6">
+    <AppShell user={user}>
+      <div className="mx-auto max-w-4xl p-6">
         <EventList events={events} />
-      </main>
-    </>
+      </div>
+    </AppShell>
   );
 }

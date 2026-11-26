@@ -6,10 +6,11 @@ import {
   fadeOut,
   initialState,
   reduce,
+  resolveTransition,
   type Command,
   type PlaybackEvent,
 } from "@/lib/playback/machine";
-import { DEFAULT_SETTINGS } from "@/lib/types";
+import { DEFAULT_SETTINGS, type Cue, type EventSettings, type ShowSnapshot } from "@/lib/types";
 import { deepFreeze, load, play, ramp, rng, run, SNAP } from "./fixtures";
 
 const START: PlaybackEvent = { type: "START_BACKGROUND" };
@@ -42,7 +43,7 @@ describe("helpers", () => {
       mode: "idle", currentCueIndex: null, playedCueIds: [],
       bg: { order: [0, 1], pos: 0, activeDeck: "bg0", started: false, crossfading: false,
             fadingDeck: null, resumeAtSec: null },
-      cue: { activeDeck: "cue0", cueIndex: null, ending: false },
+      cue: { activeDeck: "cue0", cueIndex: null, ending: false, waiting: false },
       master: 0.9,
     });
   });
@@ -394,5 +395,117 @@ describe("reduce (controller rulings and edge cases)", () => {
     const rs = ramps(log.flat());
     expect(rs.length).toBeGreaterThan(0);
     for (const r of rs) expect(r.type === "ramp" && r.seconds).toBeGreaterThanOrEqual(0.1);
+  });
+});
+
+describe("fade_out_in", () => {
+  const withT = (t: "crossfade" | "fade_out_in" | null, defaultT: "crossfade" | "fade_out_in" = "crossfade"): ShowSnapshot => ({
+    ...SNAP,
+    settings: { ...SNAP.settings, defaultTransition: defaultT },
+    cues: SNAP.cues.map((c) => (c.id === "q1" ? { ...c, transition: t } : c)),
+  });
+  const FOI = withT("fade_out_in");
+  const hasDelay = (cmds: Command[]) => cmds.some((c) => "delaySec" in c);
+
+  it("from background: bg fades out, incoming deck play/ramp delayed by the fade", () => {
+    const { commands } = run([START, go(1)], undefined, FOI);
+    expect(commands).toContainEqual(ramp("bg0", 0, 3, true));
+    expect(commands).toContainEqual({ type: "play", deck: "cue0", delaySec: 3 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "cue0", to: 1, seconds: 3, delaySec: 3 });
+    expect(commands).toContainEqual(load("cue0", "c1", 45));
+    expect(commands.find((c) => c.type === "load")).not.toHaveProperty("delaySec");
+  });
+
+  it("from another cue: delay equals the previous cue's fadeOutSec", () => {
+    const snap: ShowSnapshot = {
+      ...FOI,
+      cues: FOI.cues.map((c) => (c.id === "q2" ? { ...c, fadeOutSec: 2 } : c)),
+    };
+    // q2 plays first (cue0), then GO into q1 (fade_out_in)
+    const { commands } = run([go(2), go(1)], undefined, snap);
+    expect(commands).toContainEqual(ramp("cue0", 0, 2, true));
+    expect(commands).toContainEqual({ type: "play", deck: "cue1", delaySec: 2 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "cue1", to: 1, seconds: 3, delaySec: 2 });
+  });
+
+  it("transition null falls back to settings.defaultTransition", () => {
+    const fo = run([START, go(1)], undefined, withT(null, "fade_out_in")).commands;
+    expect(fo).toContainEqual({ type: "play", deck: "cue0", delaySec: 3 });
+    const cf = run([START, go(1)], undefined, withT(null, "crossfade")).commands;
+    expect(hasDelay(cf)).toBe(false);
+  });
+
+  it("nothing audible: no delay from idle or after FADE_STOP", () => {
+    expect(hasDelay(run([go(1)], undefined, FOI).commands)).toBe(false);
+    expect(hasDelay(run([START, STOP, go(1)], undefined, FOI).commands)).toBe(false);
+  });
+
+  it("BACK_TO_BACKGROUND during the wait fades the cue deck without delay", () => {
+    const { state, commands } = run([START, go(1), BACK], undefined, FOI);
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    const r = commands.find((c) => c.type === "ramp" && c.deck === "cue0");
+    expect(r).not.toHaveProperty("delaySec");
+    expect(state.mode).toBe("background");
+  });
+
+  it("cue ending under fade_out_in delays the background resume", () => {
+    const snap: ShowSnapshot = {
+      ...FOI,
+      cues: FOI.cues.map((c) => (c.id === "q1" ? { ...c, fadeOutSec: 2 } : c)),
+    };
+    const { commands } = run([go(1), cueEnded("cue0")], undefined, snap);
+    expect(commands).toContainEqual(ramp("cue0", 0, 2, true));
+    expect(commands).toContainEqual({ type: "play", deck: "bg0", delaySec: 2 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "bg0", to: 0.7, seconds: 2, delaySec: 2 });
+    const ld = commands.find((c) => c.type === "load");
+    expect(ld).toBeDefined();
+    expect(ld).not.toHaveProperty("delaySec");
+  });
+
+  it("B during the wait brings bg straight back (no delay)", () => {
+    const { commands } = run([START, go(1), BACK], undefined, FOI);
+    expect(commands).toContainEqual(play("bg0"));
+    expect(commands).toContainEqual(ramp("bg0", 0.7, 3));
+    expect(hasDelay(commands)).toBe(false);
+  });
+
+  it("N into a second fade_out_in cue during the wait starts without delay", () => {
+    const snap: ShowSnapshot = {
+      ...FOI,
+      cues: FOI.cues.map((c) => (c.id === "q2" ? { ...c, transition: "fade_out_in" as const } : c)),
+    };
+    const { commands } = run([START, go(1), go(2)], undefined, snap);
+    expect(commands).toContainEqual(ramp("cue0", 0, 3, true));
+    expect(commands).toContainEqual(play("cue1"));
+    expect(hasDelay(commands)).toBe(false);
+  });
+
+  it("after the delayed deck reports time, B delays the bg resume again", () => {
+    const { commands } = run([START, go(1), cueTime("cue0", 45.1), BACK], undefined, FOI);
+    expect(commands).toContainEqual({ type: "play", deck: "bg0", delaySec: 3 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "bg0", to: 0.7, seconds: 3, delaySec: 3 });
+  });
+
+  it("bg-kind GO_CUE uses the ended song cue's transition, ignoring its own", () => {
+    const snap: ShowSnapshot = {
+      ...FOI,
+      cues: FOI.cues.map((c) => (c.id === "q0" ? { ...c, transition: "crossfade" as const } : c)),
+    };
+    const { commands } = run([go(1), cueTime("cue0", 45.1), go(0)], undefined, snap);
+    expect(commands).toContainEqual({ type: "play", deck: "bg0", delaySec: 3 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "bg0", to: 0.7, seconds: 3, delaySec: 3 });
+  });
+
+  it("FADE_STOP during the wait does not leak waiting into the next fade_out_in cue", () => {
+    const { commands, state } = run([START, go(1), STOP, START, go(1)], undefined, FOI);
+    expect(state.cue.waiting).toBe(true);
+    expect(commands).toContainEqual({ type: "play", deck: "cue1", delaySec: 3 });
+    expect(commands).toContainEqual({ type: "ramp", deck: "cue1", to: 1, seconds: 3, delaySec: 3 });
+  });
+
+  it("legacy snapshots resolve to crossfade", () => {
+    const c = { ...SNAP.cues[1], transition: undefined } as unknown as Cue;
+    const s = { ...DEFAULT_SETTINGS, defaultTransition: undefined } as unknown as EventSettings;
+    expect(resolveTransition(c, s)).toBe("crossfade");
   });
 });

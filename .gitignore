@@ -64,3 +64,4 @@ public/workbox-*.js.map
 
 # bundled CLI (Docker build)
 dist-scripts/
+e2e-screens/

@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -59,7 +60,7 @@ export function FolderTree({
   for (const f of folders) byParent.set(f.parentId, [...(byParent.get(f.parentId) ?? []), f]);
 
   const item = (active: boolean) =>
-    `flex-1 truncate rounded-md px-2 py-1 text-left text-sm hover:bg-muted ${active ? "bg-muted font-medium" : ""}`;
+    `min-h-11 flex-1 truncate rounded-[10px] px-3 text-left text-sm outline-none transition-colors duration-150 hover:bg-surface-2 focus-visible:ring-3 focus-visible:ring-ring/50 ${active ? "bg-surface-2 font-medium text-foreground" : "text-muted-foreground"}`;
 
   const render = (parent: string | null, depth: number) =>
     (byParent.get(parent) ?? []).map((f) => (
@@ -76,22 +77,22 @@ export function FolderTree({
             type="button"
             aria-label="Đổi tên thư mục"
             title="Đổi tên thư mục"
-            className="px-1 text-xs text-muted-foreground opacity-0 hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+            className="inline-flex size-11 items-center justify-center rounded-[10px] text-muted-foreground opacity-0 transition-colors duration-150 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50 group-hover:opacity-100 outline-none"
             onClick={() => {
               setName(f.name);
               setDialog({ kind: "rename", folder: f });
             }}
           >
-            ✎
+            <Pencil className="size-4" aria-hidden />
           </button>
           <button
             type="button"
             aria-label="Xoá thư mục"
             title="Xoá thư mục"
-            className="px-1 text-xs text-muted-foreground opacity-0 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+            className="inline-flex size-11 items-center justify-center rounded-[10px] text-muted-foreground opacity-0 transition-colors duration-150 hover:text-destructive focus-visible:opacity-100 focus-visible:ring-3 focus-visible:ring-ring/50 group-hover:opacity-100 outline-none"
             onClick={() => setDialog({ kind: "delete", folder: f })}
           >
-            ✕
+            <X className="size-4" aria-hidden />
           </button>
         </div>
         {render(f.id, depth + 1)}
@@ -99,10 +100,11 @@ export function FolderTree({
     ));
 
   return (
-    <aside className="flex flex-col gap-2" data-testid="folder-tree">
+    <aside className="flex flex-col gap-1 self-start rounded-2xl border border-border bg-card p-3" data-testid="folder-tree">
       <Button
         variant="outline"
         size="sm"
+        className="mb-1"
         onClick={() => {
           setName("");
           setDialog({ kind: "create" });
@@ -137,7 +139,7 @@ export function FolderTree({
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="rounded-md border bg-background px-2 py-1.5"
+                className="h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               />
             </label>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}

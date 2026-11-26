@@ -1,5 +1,5 @@
 import type { SP } from "@/lib/page-props";
-import { AppHeader } from "@/components/app-header";
+import { AppShell } from "@/components/app-shell";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { requireAdmin } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
@@ -8,7 +8,7 @@ import { createUserAction, deleteUserAction, resetPasswordAction } from "./actio
 import { DeleteUserForm } from "./DeleteUserForm";
 
 const input =
-  "h-9 rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50";
+  "h-11 rounded-[10px] border border-border bg-surface-2 px-3 text-sm text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const ERRORS: Record<string, string> = {
   short: "Mật khẩu tối thiểu 8 ký tự",
@@ -24,10 +24,9 @@ export default async function UsersPage({ searchParams }: SP) {
   const users = listUsers(getDb());
 
   return (
-    <>
-      <AppHeader user={me} />
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
-        <h1 className="text-xl font-semibold">Người dùng</h1>
+    <AppShell user={me}>
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
+        <h1 className="text-2xl font-semibold">Người dùng</h1>
         <div>
           <a href="/api/admin/backup" download className={buttonVariants({ variant: "outline" })}>
             Tải bản sao lưu database
@@ -39,7 +38,10 @@ export default async function UsersPage({ searchParams }: SP) {
           </p>
         ) : null}
 
-        <form action={createUserAction} className="flex flex-wrap items-end gap-3">
+        <form
+          action={createUserAction}
+          className="flex flex-wrap items-end gap-3 rounded-2xl border border-border bg-card p-5"
+        >
           <div className="flex flex-col gap-1">
             <label htmlFor="new-email" className="text-sm font-medium">
               Email
@@ -60,19 +62,20 @@ export default async function UsersPage({ searchParams }: SP) {
               className={input}
             />
           </div>
-          <label className="flex items-center gap-2 pb-2 text-sm">
-            <input type="checkbox" name="isAdmin" /> Quản trị viên
+          <label className="flex h-11 items-center gap-2 text-sm">
+            <input type="checkbox" name="isAdmin" className="size-5 accent-primary" /> Quản trị viên
           </label>
           <Button type="submit">Tạo tài khoản</Button>
         </form>
 
+        <div className="overflow-x-auto rounded-2xl border border-border bg-card px-4 py-2">
         <table className="w-full text-sm">
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b">
-                <td className="py-2">{u.email}</td>
-                <td className="py-2 text-muted-foreground">{u.isAdmin ? "Quản trị viên" : ""}</td>
-                <td className="py-2">
+              <tr key={u.id} className="border-b border-border transition-colors duration-150 last:border-b-0 hover:bg-surface-2">
+                <td className="py-2 pr-2">{u.email}</td>
+                <td className="py-2 pr-2 text-muted-foreground">{u.isAdmin ? "Quản trị viên" : ""}</td>
+                <td className="py-2 pr-2">
                   <form action={resetPasswordAction} className="flex gap-2">
                     <input type="hidden" name="id" value={u.id} />
                     <input
@@ -98,7 +101,8 @@ export default async function UsersPage({ searchParams }: SP) {
             ))}
           </tbody>
         </table>
-      </main>
-    </>
+        </div>
+      </div>
+    </AppShell>
   );
 }

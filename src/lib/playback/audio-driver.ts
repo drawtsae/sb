@@ -73,6 +73,11 @@ interface DeckState {
   /** play/ramp commands waiting for the swap or for metadata, in arrival order. */
   queue: DeckCommand[];
   pauseTimer: Timer | null;
+  /**
+   * Commands carrying `delaySec`, held until one timer fires and then replayed in order. Any later
+   * load/play/ramp on the deck (or a delayed batch from another `run`) discards the batch.
+   */
+  delayed: { timer: Timer; commands: DeckCommand[]; runId: number } | null;
   swapTimer: Timer | null;
   listeners: [string, () => void][];
 }
@@ -102,7 +107,7 @@ export function createAudioDriver(
     gain.connect(master);
     const d: DeckState = {
       deck, el, source, gain, phase: "empty", gen: 0, readyGen: -1, errorGen: -1, target: 0, songId: null,
-      pendingLoad: null, seekTo: 0, queue: [], pauseTimer: null, swapTimer: null, listeners: [],
+      pendingLoad: null, seekTo: 0, queue: [], pauseTimer: null, delayed: null, swapTimer: null, listeners: [],
     };
     const on = (type: string, fn: () => void) => {
       el.addEventListener(type, fn);
@@ -110,7 +115,9 @@ export function createAudioDriver(
     };
     on("loadedmetadata", () => onMetadata(d));
     on("timeupdate", () => {
-      if (d.readyGen !== d.gen) return; // stale source, or not loaded yet
+      // Stale source, not loaded yet, or paused (a seek on a paused element fires timeupdate; the
+      // machine must not take that as the cue having sounded).
+      if (d.readyGen !== d.gen || el.paused) return;
       emit(isCue(deck) ? { type: "CUE_TIME", deck, t: el.currentTime }
         : { type: "BG_TIME", deck, t: el.currentTime, duration: el.duration });
     });
@@ -148,6 +155,11 @@ export function createAudioDriver(
   function clearPause(d: DeckState) {
     if (d.pauseTimer !== null) clearTimeout(d.pauseTimer);
     d.pauseTimer = null;
+  }
+
+  function clearDelayed(d: DeckState) {
+    if (d.delayed !== null) clearTimeout(d.delayed.timer);
+    d.delayed = null;
   }
 
   /** Not paused, and either the reported gain or the last ramp target is above silence. */
@@ -206,7 +218,28 @@ export function createAudioDriver(
     }
   }
 
+  /** Hold a delayed command; same-run commands share one batch (and one timer). */
+  function deferCommand(d: DeckState, c: DeckCommand, delaySec: number, runId: number) {
+    if (d.delayed && d.delayed.runId !== runId) clearDelayed(d);
+    if (!d.delayed) {
+      const batch = {
+        timer: setTimeout(() => {
+          if (d.delayed !== batch) return;
+          d.delayed = null;
+          for (const cmd of batch.commands) deckCommand(d, cmd);
+        }, delaySec * 1000),
+        commands: [] as DeckCommand[],
+        runId,
+      };
+      d.delayed = batch;
+    }
+    const stripped = { ...c };
+    delete stripped.delaySec;
+    d.delayed.commands.push(stripped);
+  }
+
   function load(d: DeckState, songId: string, atSec: number) {
+    clearDelayed(d);
     clearPause(d);
     d.gen += 1;
     d.queue = []; // commands for a superseded load are dropped
@@ -273,17 +306,27 @@ export function createAudioDriver(
     emit(isCue(d.deck) ? { type: "CUE_ENDED", deck: d.deck } : { type: "BG_ENDED", deck: d.deck });
   }
 
+  let runCounter = 0;
+
   function run(commands: Command[]) {
     if (disposed) return;
+    const runId = ++runCounter;
     for (const c of commands) {
       switch (c.type) {
         case "load":
           load(decks[c.deck], c.songId, c.atSec);
           break;
         case "play":
-        case "ramp":
-          deckCommand(decks[c.deck], c);
+        case "ramp": {
+          const d = decks[c.deck];
+          if (c.delaySec !== undefined && c.delaySec > 0) {
+            deferCommand(d, c, c.delaySec, runId);
+          } else {
+            clearDelayed(d);
+            deckCommand(d, c);
+          }
           break;
+        }
         case "master":
           rampParam(master.gain, c.to, MASTER_RAMP_SEC);
           break;
@@ -315,6 +358,7 @@ export function createAudioDriver(
       for (const deck of DECKS) {
         const d = decks[deck];
         clearPause(d);
+        clearDelayed(d);
         if (d.swapTimer !== null) clearTimeout(d.swapTimer);
         d.swapTimer = null;
         d.queue = [];

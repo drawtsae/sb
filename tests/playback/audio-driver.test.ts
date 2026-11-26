@@ -286,6 +286,20 @@ describe("events", () => {
   });
 });
 
+describe("timeupdate only while playing", () => {
+  it("a paused deck's timeupdate (e.g. from the seek) emits nothing; after play it emits CUE_TIME", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 30)]);
+    s.els.cue0.metadata(200);
+    s.els.cue0.fire("timeupdate");
+    expect(s.events).toEqual([]);
+    s.driver.run([play("cue0")]);
+    s.els.cue0.advanceTo(30.5);
+    s.els.cue0.fire("timeupdate");
+    expect(s.events).toEqual([{ type: "CUE_TIME", deck: "cue0", t: 30.5 }]);
+  });
+});
+
 describe("ruling 3: stale events from a previous source are dropped", () => {
   it("late timeupdate/ended after a reload are dropped until the new source is ready", () => {
     const s = setup();
@@ -456,5 +470,90 @@ describe("dispose", () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(() => s.driver.run([play("bg0")])).not.toThrow();
     expect(s.els.bg0.play).not.toHaveBeenCalled();
+  });
+});
+
+describe("delaySec", () => {
+  const dplay = (deck: Deck, delaySec: number): Command => ({ type: "play", deck, delaySec });
+  const dramp = (deck: Deck, to: number, seconds: number, delaySec: number): Command => ({
+    type: "ramp", deck, to, seconds, delaySec,
+  });
+
+  it("delayed play and ramp wait, then start together", () => {
+    const s = setup();
+    s.ctx.currentTime = 10;
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2), dramp("cue0", 1, 3, 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(1999);
+    expect(s.els.cue0.play).not.toHaveBeenCalled();
+    expect(s.gain("cue0").value).toBe(0);
+    expect(s.gain("cue0").ramps()).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(s.els.cue0.play).toHaveBeenCalledTimes(1);
+    expect(s.gain("cue0").ramps()).toEqual([[1, 13]]);
+  });
+
+  it("a newer non-delayed ramp cancels the batch", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2), dramp("cue0", 1, 3, 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(500);
+    s.driver.run([{ type: "ramp", deck: "cue0", to: 0, seconds: 1, pauseAtEnd: true }]);
+    vi.advanceTimersByTime(5000);
+    expect(s.els.cue0.play).not.toHaveBeenCalled();
+  });
+
+  it("a load cancels the batch", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2), dramp("cue0", 1, 3, 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(500);
+    s.driver.run([load("cue0", "c2", 0)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(5000);
+    expect(s.els.cue0.play).not.toHaveBeenCalled();
+  });
+
+  it("a newer delayed batch replaces the old one", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(500);
+    s.driver.run([dplay("cue0", 1)]);
+    vi.advanceTimersByTime(999);
+    expect(s.els.cue0.play).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(s.els.cue0.play).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(5000);
+    expect(s.els.cue0.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("commands on other decks do not cancel it", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(500);
+    s.driver.run([load("bg0", "b1", 0), play("bg0"), ramp("bg0", 0.5, 1)]);
+    s.els.bg0.metadata(100);
+    vi.advanceTimersByTime(1500);
+    expect(s.els.cue0.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending pauseAtEnd is not cancelled until the delayed batch fires", () => {
+    const s = setup();
+    playing(s, "cue0", "c1", 1);
+    s.driver.run([ramp("cue0", 0, 1, true), dplay("cue0", 5)]);
+    vi.advanceTimersByTime(1100);
+    expect(s.els.cue0.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispose during the wait prevents the play", () => {
+    const s = setup();
+    s.driver.run([load("cue0", "c1", 0), dplay("cue0", 2)]);
+    s.els.cue0.metadata(100);
+    vi.advanceTimersByTime(500);
+    s.driver.dispose();
+    vi.advanceTimersByTime(5000);
+    expect(s.els.cue0.play).not.toHaveBeenCalled();
   });
 });

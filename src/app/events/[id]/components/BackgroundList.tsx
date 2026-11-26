@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/time-format";
@@ -32,9 +33,12 @@ export function BackgroundList({
   const [removing, setRemoving] = useState<BgTrack | null>(null);
 
   return (
-    <section aria-labelledby="bg-h" className="flex flex-col gap-2 rounded-xl border p-4">
+    <section
+      aria-labelledby="bg-h"
+      className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-5"
+    >
       <div className="flex items-center justify-between">
-        <h2 id="bg-h" className="text-base font-semibold">
+        <h2 id="bg-h" className="text-lg font-semibold text-foreground">
           Nhạc nền
         </h2>
         <Button type="button" size="sm" onClick={() => setPicking(true)}>
@@ -42,44 +46,60 @@ export function BackgroundList({
         </Button>
       </div>
       {tracks.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Chưa có bài nhạc nền nào</p>
+        <p className="text-sm text-muted-foreground">
+          Chưa có bài nhạc nền nào
+        </p>
       ) : null}
-      <div className="flex flex-col gap-1">
-        <SortableList id="bg-dnd" items={tracks} getKey={(t) => t.id} onReorder={onReorder}>
+      <div className="flex flex-col gap-2">
+        <SortableList
+          id="bg-dnd"
+          items={tracks}
+          getKey={(t) => t.id}
+          onReorder={onReorder}
+        >
           {(t, { handle, index, count, move }) => {
             const song = songsById[t.songId];
             return (
               <div
                 data-testid="bg-item"
-                className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-sm"
+                className="flex items-center gap-2 rounded-[10px] border border-border bg-surface-2 px-2 py-1 text-sm"
               >
                 {handle}
-                <span className="w-6 text-muted-foreground">{index + 1}</span>
-                <span className="min-w-0 flex-1 truncate">{song?.title ?? "(bài đã mất)"}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="w-6 text-muted-foreground tabular-nums">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {song?.title ?? "(bài đã mất)"}
+                </span>
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {song ? formatTime(song.durationSec) : ""}
                 </span>
                 <Button
                   type="button"
-                  size="xs"
+                  size="icon-xs"
                   variant="ghost"
                   aria-label="Chuyển lên"
                   disabled={index === 0}
                   onClick={() => move(-1)}
                 >
-                  ↑
+                  <ChevronUp aria-hidden className="size-4" />
                 </Button>
                 <Button
                   type="button"
-                  size="xs"
+                  size="icon-xs"
                   variant="ghost"
                   aria-label="Chuyển xuống"
                   disabled={index === count - 1}
                   onClick={() => move(1)}
                 >
-                  ↓
+                  <ChevronDown aria-hidden className="size-4" />
                 </Button>
-                <Button type="button" size="xs" variant="destructive" onClick={() => setRemoving(t)}>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="destructive"
+                  onClick={() => setRemoving(t)}
+                >
                   Xoá
                 </Button>
               </div>

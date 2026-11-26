@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import type { EventSettings } from "@/lib/types";
+import type { EventSettings, Transition } from "@/lib/types";
+import { TRANSITION_LABEL } from "@/app/live/components/transition-label";
 import { NumberField } from "./NumberField";
 import { useAutosave, type SaveStatus } from "./useAutosave";
+
+const selectClass =
+  "min-h-11 w-full rounded-[10px] border border-border bg-surface-2 px-3 py-2 text-foreground outline-none transition-colors duration-150 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 export function SettingsPanel({
   settings,
@@ -15,7 +19,11 @@ export function SettingsPanel({
   settings: EventSettings;
   onChange: (patch: Partial<EventSettings>) => void;
   onSave: (s: EventSettings) => Promise<void>;
-  onStatus: (key: string, status: SaveStatus | null, retry?: () => void) => void;
+  onStatus: (
+    key: string,
+    status: SaveStatus | null,
+    retry?: () => void,
+  ) => void;
   onFlusher: (key: string, flush: (() => Promise<boolean>) | null) => void;
 }) {
   const { status, retry, flush } = useAutosave(settings, onSave);
@@ -28,7 +36,10 @@ export function SettingsPanel({
     return () => onFlusher("settings", null);
   }, [onFlusher, flush]);
 
-  const sec = (label: string, key: "cueFadeSec" | "bgCrossfadeSec" | "stopFadeSec") => (
+  const sec = (
+    label: string,
+    key: "cueFadeSec" | "bgCrossfadeSec" | "stopFadeSec",
+  ) => (
     <NumberField
       label={label}
       value={settings[key]}
@@ -51,8 +62,11 @@ export function SettingsPanel({
   );
 
   return (
-    <section aria-labelledby="settings-h" className="flex flex-col gap-3 rounded-xl border p-4">
-      <h2 id="settings-h" className="text-base font-semibold">
+    <section
+      aria-labelledby="settings-h"
+      className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5"
+    >
+      <h2 id="settings-h" className="text-lg font-semibold text-foreground">
         Cài đặt
       </h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -61,9 +75,26 @@ export function SettingsPanel({
         {sec("Fade out & dừng", "stopFadeSec")}
         {pct("Âm lượng nhạc nền", "bgVolume")}
         {pct("Âm lượng tổng", "masterVolume")}
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex flex-col gap-1 text-sm">
+          Kiểu chuyển mặc định
+          <select
+            value={settings.defaultTransition}
+            onChange={(e) =>
+              onChange({ defaultTransition: e.target.value as Transition })
+            }
+            className={selectClass}
+          >
+            {(Object.keys(TRANSITION_LABEL) as Transition[]).map((t) => (
+              <option key={t} value={t}>
+                {TRANSITION_LABEL[t]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-h-11 items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className="size-5 accent-primary"
             checked={settings.shuffle}
             onChange={(e) => onChange({ shuffle: e.target.checked })}
           />
