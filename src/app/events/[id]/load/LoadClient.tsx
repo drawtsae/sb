@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/app/library/components/Modal";
 import { readSnapshot, saveSnapshot } from "@/lib/offline/snapshot";
@@ -17,7 +16,6 @@ const stamp = (iso: string) => {
 const mb = (n: number) => (n / (1024 * 1024)).toFixed(1);
 
 export function LoadClient({ eventId }: { eventId: string }) {
-  const router = useRouter();
   const [snap, setSnap] = useState<ShowSnapshot | null>(null);
   const [items, setItems] = useState<LoadItem[]>([]);
   const [bytes, setBytes] = useState<[number, number]>([0, 0]);
@@ -165,7 +163,12 @@ export function LoadClient({ eventId }: { eventId: string }) {
       </ul>
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" disabled={!ok} onClick={() => router.push("/live")}>
+        {/* A full-document navigation, not router.push: Live then is its own document, so the
+            browser's Back (or closing the tab) mid-show goes through its beforeunload prompt
+            instead of a client-side route change that would silently end the show. Offline, the
+            service worker serves /live from the precache. */}
+        {/* eslint-disable-next-line @next/next/no-location-assign-relative-destination -- deliberate full navigation, see above */}
+        <Button type="button" disabled={!ok} onClick={() => window.location.assign("/live")}>
           Bắt đầu tiệc
         </Button>
         <Button type="button" variant="outline" disabled={!ok} onClick={() => setOfflineHelp(true)}>

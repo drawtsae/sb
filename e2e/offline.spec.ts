@@ -9,6 +9,7 @@ const fixture = (n: string) => fs.readFileSync(path.join(__dirname, "fixtures", 
 const sha256 = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex");
 
 test("after Kiểm tra & nạp, /live reloads offline from the SW and the music cache", async ({ page, context, request }) => {
+  test.setTimeout(120_000); // load + SW install + a short offline show
   // The 3 tone fixtures (a 409 means another spec already uploaded the same bytes; matching is by hash).
   const songs = TONES.map((n, i) => ({ ref: `s${i}`, title: `offline-${n}`, contentHash: sha256(fixture(n)) }));
   for (const n of TONES) {
@@ -26,7 +27,7 @@ test("after Kiểm tra & nạp, /live reloads offline from the SW and the music 
     background: ["s0", "s1"],
     cues: [
       { ...cueBase, position: 0, kind: "background", name: "Đón khách", songRef: null },
-      { ...cueBase, position: 1, kind: "song", name: "Cô dâu vào", songRef: "s2" },
+      { ...cueBase, position: 1, kind: "song", name: "Cô dâu chú rể vào", songRef: "s2" },
     ],
   };
   await page.goto("/events");
@@ -54,13 +55,21 @@ test("after Kiểm tra & nạp, /live reloads offline from the SW and the music 
     await navigator.serviceWorker.ready;
   });
 
-  // Offline: reload /live, it renders from the precache + localStorage snapshot.
+  // Offline from here on. "Bắt đầu tiệc" is a full-document navigation (so Back mid-show hits
+  // beforeunload); the SW answers it from the precache.
+  await context.setOffline(true);
+  const startNav = page.waitForResponse((r) => new URL(r.url()).pathname === "/live" && r.request().isNavigationRequest());
+  await page.getByRole("button", { name: "Bắt đầu tiệc" }).click();
+  expect((await startNav).fromServiceWorker()).toBe(true);
+  await page.waitForURL(/\/live$/);
+  await expect(page.getByRole("heading", { name: NAME })).toBeVisible();
+
+  // Reload /live: it renders from the precache + localStorage snapshot.
   const requests: Request[] = [];
   const failed: string[] = [];
   context.on("request", (r) => requests.push(r));
   // Offline, anything that tried to reach the server (not answered by the SW) fails.
   context.on("requestfailed", (r) => failed.push(r.url()));
-  await context.setOffline(true);
   const res = await page.goto("/live");
   expect(res?.fromServiceWorker()).toBe(true);
   await expect(page.getByRole("heading", { name: NAME })).toBeVisible();
@@ -83,6 +92,49 @@ test("after Kiểm tra & nạp, /live reloads offline from the SW and the music 
   });
   expect(swCached).toContain("/live");
   expect(swCached.filter((p) => !/^\/(_next\/static\/|icons\/|live$|favicon\.ico$|manifest\.webmanifest$)/.test(p))).toEqual([]);
+
+  // Run the show offline. Nothing plays before the operator clicks the overlay.
+  await page.getByRole("button", { name: "Bấm để bắt đầu điều khiển" }).click();
+  const current = page.locator('[data-testid="cue-row"][aria-current="true"]');
+  const nowPlaying = page.getByTestId("now-playing");
+  await page.keyboard.press("n");
+  await expect(current).toContainText("Đón khách");
+  await expect(nowPlaying).toContainText("[Nhạc nền]");
+  await page.waitForTimeout(350); // a second N within 300 ms is treated as a double press
+  await page.keyboard.press("n");
+  await expect(current).toContainText("Cô dâu chú rể vào");
+  await expect(nowPlaying).toContainText("[Tiết mục]");
+  await expect(nowPlaying).toContainText("→ hết bài: dừng");
+  const cueDeck = page.locator("audio[data-deck=cue0]");
+  await expect(cueDeck).toHaveAttribute("src", /^blob:/);
+  await expect.poll(() => cueDeck.evaluate((el: HTMLAudioElement) => !el.paused && el.currentTime > 0)).toBe(true);
+
+  // Space does nothing, even with a control focused ("Về nhạc nền" would leave the cue).
+  await page.getByRole("button", { name: "Về nhạc nền" }).focus();
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(500);
+  await expect(current).toContainText("Cô dâu chú rể vào");
+  await expect(nowPlaying).toContainText("[Tiết mục]");
+
+  await page.keyboard.press("f");
+  await expect(page.getByText("ĐANG IM LẶNG")).toBeVisible({ timeout: 4_000 });
+
+  // Reload mid-show (beforeunload asks first): resume from the saved state, still silent.
+  const dialogs: string[] = [];
+  page.on("dialog", (d) => {
+    dialogs.push(d.type());
+    void d.accept();
+  });
+  await page.reload();
+  expect(dialogs).toEqual(["beforeunload"]);
+  await page.getByRole("button", { name: "Tiếp tục từ chỗ cũ" }).click();
+  await page.getByRole("button", { name: "Bấm để bắt đầu điều khiển" }).click();
+  await expect(current).toContainText("Cô dâu chú rể vào");
+  await expect(page.locator('[data-testid="cue-row"][data-played="true"]')).toHaveCount(2);
+  await expect(page.getByText("ĐANG IM LẶNG")).toBeVisible();
+
+  // The whole show never reached the server.
+  expect(requests.filter((r) => /^\/(api|__music)\//.test(new URL(r.url()).pathname)).map((r) => r.url())).toEqual([]);
 
   await context.setOffline(false);
 });
