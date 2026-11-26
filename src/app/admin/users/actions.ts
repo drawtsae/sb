@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { MIN_PASSWORD } from "@/server/auth/password";
 import { requireAdmin } from "@/server/auth/require";
 import { getDb } from "@/server/db/client";
 import { createUser, deleteUser, resetPassword } from "@/server/repo/users";
 
 const PATH = "/admin/users";
-const MIN_PASSWORD = 8;
 
 function fail(code: "short" | "exists" | "invalid"): never {
   redirect(`${PATH}?error=${code}`);

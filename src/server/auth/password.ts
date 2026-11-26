@@ -14,3 +14,16 @@ export async function verifyPassword(hashed: string, pw: string): Promise<boolea
     return false;
   }
 }
+
+export const MIN_PASSWORD = 8;
+/** The ADMIN_PASSWORD value shipped in .env.production.example. */
+export const ENV_PLACEHOLDER_PASSWORD = "change-me-to-a-long-random-password";
+
+/** Why a password must not be used for an account, or null when it is acceptable. */
+export function passwordProblem(pw: string): string | null {
+  if (pw.length < MIN_PASSWORD) return `must be at least ${MIN_PASSWORD} characters`;
+  if (pw === ENV_PLACEHOLDER_PASSWORD || pw.toLowerCase().includes("change-me")) {
+    return "is still the example placeholder (contains \"change-me\")";
+  }
+  return null;
+}

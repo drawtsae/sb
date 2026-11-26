@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { getDb } from "../src/server/db/client";
+import { MIN_PASSWORD } from "../src/server/auth/password";
 import { createUser } from "../src/server/repo/users";
 
 const { values } = parseArgs({
@@ -12,6 +13,10 @@ const { values } = parseArgs({
 
 if (!values.email || !values.password) {
   console.error("Usage: create-user.ts --email x --password y [--admin]");
+  process.exit(1);
+}
+if (values.password.length < MIN_PASSWORD) {
+  console.error(`Password must be at least ${MIN_PASSWORD} characters`);
   process.exit(1);
 }
 

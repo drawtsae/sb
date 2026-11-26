@@ -18,7 +18,7 @@ Biến môi trường:
 | Biến | Ý nghĩa |
 |---|---|
 | `DATA_DIR` | Thư mục chứa `app.db` và `music/` (mặc định `./data`) |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Tạo quản trị viên đầu tiên khi chưa có người dùng nào |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Tạo quản trị viên đầu tiên khi chưa có người dùng nào (mật khẩu tối thiểu 8 ký tự, không được chứa `change-me`) |
 | `MAX_UPLOAD_MB` | Dung lượng tối đa mỗi file nhạc tải lên (mặc định 100). Phải nhỏ hơn hoặc bằng giới hạn `request_body` 200MB của Caddy; muốn tăng thì tăng cả hai |
 | `COOKIE_SECURE` | Ở chế độ production, cookie đăng nhập có cờ Secure trừ khi đặt `false` |
 

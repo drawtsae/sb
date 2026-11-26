@@ -1,5 +1,9 @@
 // @vitest-environment node
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb, type Db } from "@/server/db/client";
@@ -135,6 +139,33 @@ describe("ensureAdminFromEnv", () => {
     vi.unstubAllEnvs();
   });
 
+  it.each([
+    ["the .env.production.example placeholder", "change-me-to-a-long-random-password"],
+    ["the .env.example placeholder", "change-me"],
+    ["a password containing change-me", "Xchange-me123456"],
+    ["a short password", "abc1234"],
+  ])("refuses %s and logs an error", async (_label, password) => {
+    vi.stubEnv("ADMIN_EMAIL", "boss@x.com");
+    vi.stubEnv("ADMIN_PASSWORD", password);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await ensureAdminFromEnv(db);
+    expect(listUsers(db)).toHaveLength(0);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(String(error.mock.calls[0][0])).toContain("ADMIN_PASSWORD");
+    error.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
+  it("accepts a good password of 8+ characters", async () => {
+    vi.stubEnv("ADMIN_EMAIL", "boss@x.com");
+    vi.stubEnv("ADMIN_PASSWORD", "k9-Tq2vLmx");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await ensureAdminFromEnv(db);
+    expect(listUsers(db)).toHaveLength(1);
+    log.mockRestore();
+    vi.unstubAllEnvs();
+  });
+
   it("does nothing and warns when env unset", async () => {
     vi.stubEnv("ADMIN_EMAIL", "");
     vi.stubEnv("ADMIN_PASSWORD", "");
@@ -145,6 +176,23 @@ describe("ensureAdminFromEnv", () => {
     warn.mockRestore();
     vi.unstubAllEnvs();
   });
+});
+
+describe("create-user script", () => {
+  it("refuses a password shorter than 8 characters", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-cu-"));
+    try {
+      const r = spawnSync(
+        process.execPath,
+        [path.join("node_modules", "tsx", "dist", "cli.mjs"), "scripts/create-user.ts", "--email", "a@x.com", "--password", "short7!"],
+        { env: { ...process.env, DATA_DIR: dir }, encoding: "utf8" },
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("at least 8 characters");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 describe("user repo", () => {
