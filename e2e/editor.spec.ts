@@ -47,7 +47,7 @@ test("uploads songs, creates the event and builds the background playlist", asyn
     ["editor-cue.wav", 500, 30],
   ] as const) {
     const res = await request.put(`/api/songs/upload?name=${name}`, { data: wav(hz, sec) });
-    expect([201, 409]).toContain(res.status());
+    expect(res.status()).toBe(201);
   }
 
   await page.goto("/events");

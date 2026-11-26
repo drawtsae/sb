@@ -31,7 +31,7 @@ test("export an event, import it back, and report missing songs", async ({ page,
   const audio = wav(620, 15);
   const hash = crypto.createHash("sha256").update(audio).digest("hex");
   const up = await request.put("/api/songs/upload?name=export-song.wav", { data: audio });
-  expect([201, 409]).toContain(up.status());
+  expect(up.status()).toBe(201);
 
   const settings = { cueFadeSec: 3, bgCrossfadeSec: 4, stopFadeSec: 3, bgVolume: 0.7, masterVolume: 0.9, shuffle: false };
   const cueBase = { startSec: 0, endSec: null, fadeInSec: null, fadeOutSec: null, volume: 100, onEnd: "stop", note: "" };

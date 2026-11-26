@@ -10,11 +10,12 @@ const sha256 = (b: Buffer) => crypto.createHash("sha256").update(b).digest("hex"
 
 test("after Kiểm tra & nạp, /live reloads offline from the SW and the music cache", async ({ page, context, request }) => {
   test.setTimeout(120_000); // load + SW install + a short offline show
-  // The 3 tone fixtures (a 409 means another spec already uploaded the same bytes; matching is by hash).
+  // The 3 tone fixtures. Uploading bytes another spec already uploaded still answers 201 (a new
+  // library entry); the import below matches songs by content hash, so either copy is fine.
   const songs = TONES.map((n, i) => ({ ref: `s${i}`, title: `offline-${n}`, contentHash: sha256(fixture(n)) }));
   for (const n of TONES) {
     const up = await request.put(`/api/songs/upload?name=offline-${n}`, { data: fixture(n) });
-    expect([201, 409]).toContain(up.status());
+    expect(up.status()).toBe(201);
   }
 
   // Event: two background tracks plus one song cue, so it uses 3 distinct songs.

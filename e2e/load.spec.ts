@@ -8,7 +8,7 @@ const fixture = (n: string) => fs.readFileSync(path.join(__dirname, "fixtures", 
 test("load page blocks on a bad cue, then enables Bắt đầu tiệc after the fix", async ({ page, request }) => {
   for (const n of ["tone-a-20s.wav", "tone-b-20s.wav"]) {
     const up = await request.put(`/api/songs/upload?name=load-${n}`, { data: fixture(n) });
-    expect([201, 409]).toContain(up.status());
+    expect(up.status()).toBe(201);
   }
 
   await page.goto("/events");
