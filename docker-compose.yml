@@ -1,5 +1,8 @@
 services:
   app:
+    # Prebuilt by .github/workflows/docker.yml: `docker compose pull && docker compose up -d`.
+    # `docker compose up -d --build` still builds locally from ./Dockerfile instead.
+    image: ghcr.io/drawtsae/sb:latest
     build: .
     env_file: .env
     environment:

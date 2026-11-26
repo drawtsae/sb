@@ -53,6 +53,18 @@ client (không tin header do client gửi), nên ứng dụng chỉ được tru
 Muốn đổi `.env`, chạy `docker compose up -d` (tạo lại container); `docker compose restart`
 không nạp biến môi trường mới.
 
+**Dùng image dựng sẵn thay vì build trên máy chủ.** Mỗi lần đẩy lên nhánh `main`, GitHub
+Actions (`.github/workflows/docker.yml`) dựng image và đẩy lên
+`ghcr.io/drawtsae/sb:latest` (kèm tag `sha-<mã commit>`; tag git `v1.2.3` cho ra `1.2.3`).
+Máy chủ yếu RAM thì không cần build nữa:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Nếu package trên GHCR đang để riêng tư, chạy `docker login ghcr.io` trước (dùng token có quyền
+`read:packages`), hoặc đổi package sang Public trong phần Packages của tài khoản GitHub.
+
 Lưu ý tải lên: `requestTimeout` mặc định của Node là 300 giây, nên file 100 MB cần đường
 upload tối thiểu khoảng 3 Mbit/s. Mạng yếu hơn thì tải file nhỏ hơn.
 
@@ -66,6 +78,8 @@ docker compose exec app node dist-scripts/create-user.js --email nguoi@dung.vn -
 
 ```bash
 git pull && docker compose up -d --build
+# hoặc, dùng image dựng sẵn:
+git pull && docker compose pull && docker compose up -d
 ```
 
 Dữ liệu nằm trong volume `soundboard-data` nên được giữ nguyên. **Không cập nhật trong lúc
