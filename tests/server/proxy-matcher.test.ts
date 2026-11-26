@@ -16,4 +16,10 @@ describe("proxy matcher", () => {
     expect(re.test("/api/songs/abc/other")).toBe(true);
     expect(re.test("/login")).toBe(false);
   });
+  it("leaves the PWA files public (the SW precaches them, logged in or not)", () => {
+    for (const p of ["/live", "/sw.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/favicon.ico"]) {
+      expect(re.test(p), p).toBe(false);
+    }
+    expect(re.test("/iconsx")).toBe(true);
+  });
 });

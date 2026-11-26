@@ -52,3 +52,11 @@ playwright-report/
 # generated audio fixtures
 e2e/fixtures/*.wav
 e2e/fixtures/*.mp3
+
+# generated service worker (npm run build -> serwist build)
+public/sw.js
+public/sw.js.map
+public/swe-worker-*.js
+public/swe-worker-*.js.map
+public/workbox-*.js
+public/workbox-*.js.map

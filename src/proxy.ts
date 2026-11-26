@@ -17,6 +17,6 @@ export function proxy(request: NextRequest) {
 // buffers the request body and truncates it at 10 MB. They authenticate with requireUserApi.
 export const config = {
   matcher: [
-    "/((?!login$|login/|live$|live/|sw\\.js$|~offline$|~offline/|manifest\\.webmanifest$|_next/|favicon\\.ico$|api/songs/upload$|api/songs/[^/]+/file$).*)",
+    "/((?!login$|login/|live$|live/|sw\\.js$|~offline$|~offline/|manifest\\.webmanifest$|icons/|_next/|favicon\\.ico$|api/songs/upload$|api/songs/[^/]+/file$).*)",
   ],
 };
