@@ -75,6 +75,16 @@ máy, trình duyệt vào cuối file.
 - [ ] Xoá dữ liệu trang web (Cache Storage) rồi mở /live: hiện
       **"Thiếu nhạc trong bộ nhớ — quay lại Kiểm tra & nạp"** và không bắt đầu được.
 
+## Triển khai (Docker)
+
+- [ ] `docker compose build` và `docker compose up -d` chạy được; mở `https://<DOMAIN>` thấy trang đăng nhập.
+- [ ] Đăng nhập, tải lên một bài nhạc, tạo một chương trình.
+- [ ] **Khởi động lại container, dữ liệu còn nguyên:** chạy `docker compose restart app`; đăng
+      nhập lại thì bài nhạc và chương trình vẫn còn, phát được.
+- [ ] Kiểm tra `sw.js` là bản mới: số in ra bởi lệnh sau phải lớn hơn 0:
+      `curl -s https://<DOMAIN>/sw.js | grep -c "$(docker compose exec -T app cat .next/BUILD_ID)"`
+- [ ] Cổng 3000 không truy cập được trực tiếp từ ngoài (chỉ qua Caddy).
+
 ## Kết quả
 
 | Ngày | Máy / hệ điều hành | Trình duyệt | Loa | Người kiểm tra | Ghi chú |

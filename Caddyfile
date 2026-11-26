@@ -1,0 +1,12 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# No `encode`: audio is already compressed, and compression would break/slow
+	# Range requests on /api/songs/*. The app's JS/HTML payload is small.
+	request_body {
+		max_size 200MB
+	}
+	reverse_proxy app:3000
+}

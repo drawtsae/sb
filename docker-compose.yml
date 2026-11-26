@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - soundboard-data:/data
+    restart: unless-stopped
+    # NOTE: no `ports:` on purpose. Only Caddy is published (80/443).
+    # Login rate limiting keys on the first X-Forwarded-For entry. Caddy sets that
+    # from the real client IP (it does not trust an incoming XFF), so the app must
+    # only be reachable through Caddy. Do not publish port 3000.
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  soundboard-data:
+  caddy-data:
+  caddy-config:

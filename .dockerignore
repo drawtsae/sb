@@ -1,0 +1,15 @@
+node_modules
+.next
+data
+.e2e-data
+e2e/.auth
+test-results
+playwright-report
+.git
+.superpowers
+public/sw.js
+.env
+.env.*
+!.env.example
+!.env.production.example
+dist-scripts
